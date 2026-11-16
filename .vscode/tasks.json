@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Codex: pruebas del switch",
+      "label": "Codex: Run switch tests",
       "type": "process",
       "command": "python3",
       "args": [
@@ -15,7 +15,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Extensión: instalar dependencias de desarrollo",
+      "label": "Extension: Install development dependencies",
       "type": "process",
       "command": "npm",
       "args": [
@@ -30,7 +30,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Extensión: pruebas unitarias",
+      "label": "Extension: Run unit tests",
       "type": "process",
       "command": "npm",
       "args": [
@@ -43,7 +43,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Extensión: prueba en VS Code aislado",
+      "label": "Extension: Test in isolated VS Code",
       "type": "process",
       "command": "npm",
       "args": [
@@ -56,7 +56,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Extensión: generar VSIX",
+      "label": "Extension: Build VSIX",
       "type": "process",
       "command": "npm",
       "args": [

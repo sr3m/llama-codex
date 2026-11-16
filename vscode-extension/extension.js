@@ -30,8 +30,8 @@ function activate(context) {
     const icon = !enabled ? 'circle-slash' : statusKind === 'loading' ? 'sync~spin' : statusKind === 'error' ? 'warning' : 'code';
     const model = currentModel || settings.model || savedModel(settings.endpoint);
     bar.text = `$(${icon}) llama.cpp${!enabled ? ' OFF' : ''}`;
-    bar.tooltip = !enabled ? 'Autocompletado desactivado' : statusKind === 'error' ? currentModel :
-      `Modelo: ${model || 'selección automática'}${lastMode ? '\nModo: ' + lastMode : ''}\nPulsa para elegir modelo. Acepta sugerencias con Tab.`;
+    bar.tooltip = !enabled ? 'Code completion disabled' : statusKind === 'error' ? currentModel :
+      `Model: ${model || 'automatic selection'}${lastMode ? '\nMode: ' + lastMode : ''}\nClick to choose a model. Accept suggestions with Tab.`;
     bar.show();
   };
   const status = (kind, label, mode) => {
@@ -60,15 +60,15 @@ function activate(context) {
   command('llamaCppInline.selectModel', async () => {
     const settings = config(vscode.window.activeTextEditor?.document.uri);
     const key = await apiKey(settings.endpoint);
-    const models = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Consultando modelos de llama.cpp' },
+    const models = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Fetching llama.cpp models' },
       () => listModels(settings.endpoint, { timeoutMs: settings.timeoutMs, apiKey: key }));
-    if (!models.length) { vscode.window.showWarningMessage('llama.cpp no anuncia modelos disponibles.'); return; }
+    if (!models.length) { vscode.window.showWarningMessage('llama.cpp does not report any available models.'); return; }
     const best = chooseDefaultModel(models);
     const items = [...models].sort((a, b) => Number(b.id === best) - Number(a.id === best) || a.id.localeCompare(b.id)).map(m => ({
-      label: m.id, description: m.loaded ? 'Cargado' : 'Se cargará al usarlo',
-      detail: m.id === best ? 'Preferencia automática: modelo Coder disponible' : undefined
+      label: m.id, description: m.loaded ? 'Loaded' : 'Loads on first use',
+      detail: m.id === best ? 'Automatic preference: available coding model' : undefined
     }));
-    const picked = await vscode.window.showQuickPick(items, { title: 'llama.cpp · Modelo para completar código', placeHolder: 'Elige un modelo de código; uno pequeño suele responder antes' });
+    const picked = await vscode.window.showQuickPick(items, { title: 'llama.cpp · Code completion model', placeHolder: 'Choose a coding model; smaller models usually respond faster' });
     if (!picked) return;
     await context.globalState.update('model:' + normalizeEndpoint(settings.endpoint), picked.label);
     // An explicit model setting takes priority; selecting here intentionally clears it.
@@ -76,26 +76,26 @@ function activate(context) {
     provider.cancel(); discovered = undefined; status('ready', picked.label);
   });
   command('llamaCppInline.configureServer', async () => {
-    const value = await vscode.window.showInputBox({ title: 'Servidor llama.cpp', value: config().endpoint,
-      prompt: 'URL raíz o /v1. Se enviará contexto del archivo activo a este servidor.',
-      validateInput: text => { try { normalizeEndpoint(text); return undefined; } catch { return 'URL http/https válida, sin credenciales ni parámetros.'; } } });
+    const value = await vscode.window.showInputBox({ title: 'llama.cpp server', value: config().endpoint,
+      prompt: 'Root URL or /v1. Context from the active file will be sent to this server.',
+      validateInput: text => { try { normalizeEndpoint(text); return undefined; } catch { return 'Enter a valid http/https URL without credentials or query parameters.'; } } });
     if (!value) return;
     await vscode.workspace.getConfiguration('llamaCppInline').update('endpoint', normalizeEndpoint(value), vscode.ConfigurationTarget.Global);
     discovered = undefined; currentModel = ''; refreshBar();
   });
   command('llamaCppInline.setApiKey', async () => {
     const endpoint = config().endpoint;
-    const value = await vscode.window.showInputBox({ title: 'Clave de llama.cpp', password: true,
-      prompt: 'Se guarda en SecretStorage de VS Code. Vacío elimina la clave de este servidor.' });
+    const value = await vscode.window.showInputBox({ title: 'llama.cpp server key', password: true,
+      prompt: 'Stored in VS Code SecretStorage. Leave empty to remove the key for this server.' });
     if (value === undefined) return;
     if (value) await context.secrets.store(secretName(endpoint), value);
     else await context.secrets.delete(secretName(endpoint));
-    vscode.window.showInformationMessage('Clave del servidor actualizada.');
+    vscode.window.showInformationMessage('Server key updated.');
   });
   command('llamaCppInline.checkConnection', async () => {
     const settings = config();
     const models = await listModels(settings.endpoint, { timeoutMs: settings.timeoutMs, apiKey: await apiKey(settings.endpoint) });
-    vscode.window.showInformationMessage(`llama.cpp conectado: ${models.length} modelos disponibles.`);
+    vscode.window.showInformationMessage(`llama.cpp connected: ${models.length} models available.`);
   });
   command('llamaCppInline.toggle', async () => {
     const settings = vscode.workspace.getConfiguration('llamaCppInline');
@@ -104,7 +104,7 @@ function activate(context) {
   });
   command('llamaCppInline.complete', async () => {
     if (!vscode.window.activeTextEditor) return;
-    if (!config(vscode.window.activeTextEditor.document.uri).enabled) { vscode.window.showInformationMessage('Activa llama.cpp con Activar/desactivar autocompletado.'); return; }
+    if (!config(vscode.window.activeTextEditor.document.uri).enabled) { vscode.window.showInformationMessage('Enable llama.cpp using Toggle Code Completion.'); return; }
     return vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
   });
   context.subscriptions.push(output, bar, provider,

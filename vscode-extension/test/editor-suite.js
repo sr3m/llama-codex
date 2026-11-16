@@ -30,7 +30,7 @@ async function run() {
     const extension = vscode.extensions.getExtension('sr3m.llama-cpp-inline');
     assert.ok(extension, 'Development extension was not registered');
     await extension.activate();
-    const doc = await vscode.workspace.openTextDocument({ language: 'python', content: 'def sumar(a, b):\n    return ' });
+    const doc = await vscode.workspace.openTextDocument({ language: 'python', content: 'def add(a, b):\n    return ' });
     const editor = await vscode.window.showTextDocument(doc);
     const position = doc.positionAt(doc.getText().length);
     editor.selection = new vscode.Selection(position, position);
@@ -41,13 +41,13 @@ async function run() {
     assert.ok(requests > 0, 'VS Code did not invoke the registered provider');
     await delay(800);
     await vscode.commands.executeCommand('editor.action.inlineSuggest.commit');
-    assert.equal(doc.getText(), 'def sumar(a, b):\n    return a + b', 'Ghost completion was not accepted into the real editor');
+    assert.equal(doc.getText(), 'def add(a, b):\n    return a + b', 'Ghost completion was not accepted into the real editor');
     console.log('PASS: actual VS Code activation, registered inline provider, ghost text and accept command.');
     if (process.env.LLAMA_INLINE_REAL_SERVER === '1') {
       await config.update('endpoint', 'http://127.0.0.1:9931', vscode.ConfigurationTarget.Global);
       await config.update('model', process.env.LLAMA_INLINE_TEST_MODEL, vscode.ConfigurationTarget.Global);
       await config.update('mode', 'infill', vscode.ConfigurationTarget.Global);
-      const realDoc = await vscode.workspace.openTextDocument({ language: 'python', content: 'def sumar(a, b):\n    return ' });
+      const realDoc = await vscode.workspace.openTextDocument({ language: 'python', content: 'def add(a, b):\n    return ' });
       const realEditor = await vscode.window.showTextDocument(realDoc);
       const end = realDoc.positionAt(realDoc.getText().length);
       realEditor.selection = new vscode.Selection(end, end);
@@ -55,7 +55,7 @@ async function run() {
       await vscode.commands.executeCommand('llamaCppInline.complete');
       await delay(1800);
       await vscode.commands.executeCommand('editor.action.inlineSuggest.commit');
-      assert.equal(realDoc.getText(), 'def sumar(a, b):\n    return a + b', 'Real local-model completion was not accepted by VS Code');
+      assert.equal(realDoc.getText(), 'def add(a, b):\n    return a + b', 'Real local-model completion was not accepted by VS Code');
       console.log('PASS: actual llama.cpp → registered inline provider → ghost text → accepted a + b in VS Code.');
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
     }

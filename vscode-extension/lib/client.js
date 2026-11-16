@@ -122,13 +122,13 @@ class CompletionClient {
 }
 
 function friendlyError(error) {
-  if (error.code === 'TIMEOUT') return 'El modelo tardó demasiado. Prueba uno más pequeño o aumenta el tiempo de espera.';
-  if (error.code === 'INVALID_ENDPOINT') return 'Usa una URL http/https sin usuario, contraseña ni parámetros.';
-  if (error.code === 'FIM_UNSUPPORTED') return 'El modelo no admite /infill. Selecciona modo auto o chat.';
-  if ([401, 403].includes(error.status)) return 'El servidor requiere una clave válida. Usa Configurar clave del servidor.';
-  if (error.code === 'CONNECTION_FAILED') return 'No se pudo conectar con llama.cpp. Comprueba el servidor y el puerto.';
-  if (error.code === 'CANCELLED') return 'Solicitud cancelada.';
-  return 'El servidor no devolvió una respuesta válida. Comprueba el modelo y su compatibilidad.';
+  if (error.code === 'TIMEOUT') return 'The model took too long. Try a smaller model or increase the timeout.';
+  if (error.code === 'INVALID_ENDPOINT') return 'Use an http/https URL without a username, password, or query parameters.';
+  if (error.code === 'FIM_UNSUPPORTED') return 'The model does not support /infill. Select auto or chat mode.';
+  if ([401, 403].includes(error.status)) return 'The server requires a valid key. Use Set Server API Key.';
+  if (error.code === 'CONNECTION_FAILED') return 'Could not connect to llama.cpp. Check the server and port.';
+  if (error.code === 'CANCELLED') return 'Request cancelled.';
+  return 'The server did not return a valid response. Check the model and its compatibility.';
 }
 
 module.exports = { ServerError, normalizeEndpoint, requestJson, listModels, chooseDefaultModel, cleanCompletion, CompletionClient, friendlyError };

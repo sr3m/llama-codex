@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Probar llama.cpp Inline (F5)",
+      "name": "Run llama.cpp Inline (F5)",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",

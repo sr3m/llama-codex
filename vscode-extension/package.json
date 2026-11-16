@@ -1,8 +1,8 @@
 {
   "name": "llama-cpp-inline",
   "displayName": "llama.cpp Inline",
-  "description": "Autocompletado de código local con llama.cpp: sugerencias en línea que aceptas con Tab.",
-  "version": "0.1.0",
+  "description": "Local code completion with llama.cpp: inline suggestions you accept with Tab.",
+  "version": "0.1.1",
   "publisher": "sr3m",
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
@@ -16,17 +16,17 @@
   "scripts": {
     "test": "node --test test/core.test.js test/provider.test.js",
     "test:editor": "node test/run-editor.js",
-    "package": "vsce package --no-dependencies --allow-missing-repository --out ../llama-cpp-inline-0.1.0.vsix"
+    "package": "vsce package --no-dependencies --allow-missing-repository --out ../llama-cpp-inline-0.1.1.vsix"
   },
   "devDependencies": { "@vscode/vsce": "4.1.1", "@vscode/test-electron": "2.5.2" },
   "contributes": {
     "commands": [
-      { "command": "llamaCppInline.selectModel", "title": "llama.cpp: Seleccionar modelo" },
-      { "command": "llamaCppInline.configureServer", "title": "llama.cpp: Configurar servidor" },
-      { "command": "llamaCppInline.checkConnection", "title": "llama.cpp: Comprobar conexión" },
-      { "command": "llamaCppInline.setApiKey", "title": "llama.cpp: Configurar clave del servidor" },
-      { "command": "llamaCppInline.toggle", "title": "llama.cpp: Activar/desactivar autocompletado" },
-      { "command": "llamaCppInline.complete", "title": "llama.cpp: Completar código ahora" }
+      { "command": "llamaCppInline.selectModel", "title": "llama.cpp: Select Model" },
+      { "command": "llamaCppInline.configureServer", "title": "llama.cpp: Configure Server" },
+      { "command": "llamaCppInline.checkConnection", "title": "llama.cpp: Check Connection" },
+      { "command": "llamaCppInline.setApiKey", "title": "llama.cpp: Set Server API Key" },
+      { "command": "llamaCppInline.toggle", "title": "llama.cpp: Toggle Code Completion" },
+      { "command": "llamaCppInline.complete", "title": "llama.cpp: Complete Code Now" }
     ],
     "keybindings": [
       { "command": "llamaCppInline.complete", "key": "ctrl+alt+space", "mac": "cmd+alt+space", "when": "editorTextFocus && !editorReadonly" }
@@ -34,18 +34,18 @@
     "configuration": {
       "title": "llama.cpp Inline",
       "properties": {
-        "llamaCppInline.enabled": { "type": "boolean", "default": true, "description": "Activa las sugerencias de llama.cpp." },
-        "llamaCppInline.automatic": { "type": "boolean", "default": true, "description": "Solicita sugerencias mientras escribes. Desactívalo para usar solo el comando manual." },
-        "llamaCppInline.endpoint": { "type": "string", "default": "http://127.0.0.1:9931", "scope": "machine", "description": "Servidor llama.cpp. Acepta la URL raíz o terminada en /v1. En Remote SSH/WSL, apunta al host de la interfaz de VS Code." },
-        "llamaCppInline.model": { "type": "string", "default": "", "scope": "machine", "description": "Identificador exacto del modelo. Vacío: usa el elegido con Seleccionar modelo; si no hay uno, detecta un modelo Coder disponible." },
-        "llamaCppInline.mode": { "type": "string", "enum": ["auto", "infill", "chat"], "default": "auto", "description": "auto prueba /infill y usa chat solo si el servidor indica que no admite FIM. infill requiere un modelo con tokens FIM." },
-        "llamaCppInline.multiline": { "type": "boolean", "default": false, "description": "Permite sugerencias de varias líneas. Por defecto completa una línea para reducir latencia." },
-        "llamaCppInline.debounceMs": { "type": "integer", "default": 450, "minimum": 0, "maximum": 3000, "description": "Pausa al escribir antes de solicitar una sugerencia." },
-        "llamaCppInline.maxTokens": { "type": "integer", "default": 64, "minimum": 8, "maximum": 512, "description": "Máximo de tokens generados por sugerencia." },
-        "llamaCppInline.prefixChars": { "type": "integer", "default": 4000, "minimum": 256, "maximum": 24000, "description": "Caracteres del archivo activo anteriores al cursor que se envían al servidor." },
-        "llamaCppInline.suffixChars": { "type": "integer", "default": 1500, "minimum": 0, "maximum": 12000, "description": "Caracteres posteriores al cursor que se envían al servidor." },
-        "llamaCppInline.timeoutMs": { "type": "integer", "default": 15000, "minimum": 1000, "maximum": 120000, "description": "Tiempo máximo para una sugerencia, incluida la carga del modelo." },
-        "llamaCppInline.excludedLanguages": { "type": "array", "items": { "type": "string" }, "default": ["plaintext", "markdown", "scminput", "git-commit"], "description": "Lenguajes sin sugerencias automáticas ni manuales." }
+        "llamaCppInline.enabled": { "type": "boolean", "default": true, "description": "Enable llama.cpp inline suggestions." },
+        "llamaCppInline.automatic": { "type": "boolean", "default": true, "description": "Request suggestions while typing. Disable this to use the manual command only." },
+        "llamaCppInline.endpoint": { "type": "string", "default": "http://127.0.0.1:9931", "scope": "machine", "description": "llama.cpp server root URL or /v1 URL. In Remote SSH/WSL, this points to the machine running the VS Code interface." },
+        "llamaCppInline.model": { "type": "string", "default": "", "scope": "machine", "description": "Exact model identifier. Leave empty to use Select Model; if none is selected, detect an available coding model." },
+        "llamaCppInline.mode": { "type": "string", "enum": ["auto", "infill", "chat"], "default": "auto", "description": "auto tries /infill and falls back to chat only when FIM is unsupported. infill requires a model with FIM tokens." },
+        "llamaCppInline.multiline": { "type": "boolean", "default": false, "description": "Allow multiline suggestions. Defaults to one line to reduce latency." },
+        "llamaCppInline.debounceMs": { "type": "integer", "default": 450, "minimum": 0, "maximum": 3000, "description": "Pause after typing before requesting a suggestion, in milliseconds." },
+        "llamaCppInline.maxTokens": { "type": "integer", "default": 64, "minimum": 8, "maximum": 512, "description": "Maximum number of tokens generated per suggestion." },
+        "llamaCppInline.prefixChars": { "type": "integer", "default": 4000, "minimum": 256, "maximum": 24000, "description": "Maximum characters before the cursor sent from the active document." },
+        "llamaCppInline.suffixChars": { "type": "integer", "default": 1500, "minimum": 0, "maximum": 12000, "description": "Maximum characters after the cursor sent from the active document." },
+        "llamaCppInline.timeoutMs": { "type": "integer", "default": 15000, "minimum": 1000, "maximum": 120000, "description": "Maximum wait per HTTP request, including model loading." },
+        "llamaCppInline.excludedLanguages": { "type": "array", "items": { "type": "string" }, "default": ["plaintext", "markdown", "scminput", "git-commit"], "description": "Languages without automatic or manual suggestions." }
       }
     }
   }

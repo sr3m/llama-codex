@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Menú unificado de Codex: proveedores, modelos, catálogo y llama.cpp. Python >= 3.11."""
+"""Unified Codex menu: providers, models, catalog, and llama.cpp. Python >= 3.11."""
 from __future__ import annotations
 
 import contextlib
@@ -195,9 +195,9 @@ def discover(offline=False):
                                 'source': 'llama.cpp /v1/models',
                                 'loaded': item.get('status', {}).get('value') == 'loaded'}
         except (OSError, ValueError) as error:
-            warning = f'Servidor no disponible: {error}. Se usan los perfiles locales.'
+            warning = f'Server unavailable: {error}. Using local profiles.'
     if not models:
-        raise NoLocalModels('No se encontraron modelos. Enciende llama.cpp o crea un perfil llama-*.config.toml.')
+        raise NoLocalModels('No models found. Start llama.cpp or create a llama-*.config.toml profile.')
     return models, warning
 
 def template():
@@ -210,7 +210,7 @@ def template():
             candidate = next((m for m in entries if m['slug'] == 'gpt-5.5'), entries[0])
             if candidate.get('base_instructions'):
                 return candidate
-    raise RuntimeError('No se pudo obtener la plantilla del Codex instalado.')
+    raise RuntimeError('Could not read the model template from the installed Codex CLI.')
 
 def build_catalog(offline=False):
     discovered, warning = discover(offline)
@@ -231,7 +231,7 @@ def build_catalog(offline=False):
             'priority': index, 'visibility': 'list', 'supported_in_api': True,
             'context_window': details['context'], 'max_context_window': details['context'],
             'default_reasoning_level': 'none',
-            'supported_reasoning_levels': [{'effort': 'none', 'description': 'Configuración local sin esfuerzo de razonamiento adicional'}],
+            'supported_reasoning_levels': [{'effort': 'none', 'description': 'Local configuration without additional reasoning effort'}],
             'base_instructions': 'You are a helpful coding assistant running locally through llama.cpp. '
                                  'Use the available tools to inspect and modify files when requested. '
                                  'Follow the user instructions and report results accurately.',
@@ -270,7 +270,7 @@ def update(offline=False, quiet=False):
         if warning and not quiet:
             print(warning, file=sys.stderr)
         if not quiet or changed:
-            print(f'Catálogo {"actualizado" if changed else "sin cambios"}: {count} modelos · {CATALOG}', flush=True)
+            print(f'Catalog {"updated" if changed else "unchanged"}: {count} models · {CATALOG}', flush=True)
         return data
 
 import argparse
@@ -306,10 +306,10 @@ def rewrite_metadata(path, provider, model, effort):
     original = path.read_bytes()
     lines = original.splitlines(keepends=True)
     if not lines:
-        raise ValueError(f'Sesión vacía: {path}')
+        raise ValueError(f'Empty session: {path}')
     meta = json.loads(lines[0])
     if meta.get('type') != 'session_meta':
-        raise ValueError(f'Encabezado de sesión desconocido: {path}')
+        raise ValueError(f'Unknown session header: {path}')
     changed = False
     if meta['payload'].get('model_provider') != provider:
         meta['payload']['model_provider'] = provider
@@ -354,7 +354,7 @@ def database_path(config, explicit=None):
                 return path
         finally:
             con.close()
-    raise RuntimeError('No se encontró una base state_N.sqlite válida en el directorio configurado.')
+    raise RuntimeError('No valid state_N.sqlite database found in the configured directory.')
 
 def initial_state(config):
     saved = json.loads(STATE.read_text()) if STATE.exists() else {}
@@ -365,7 +365,7 @@ def initial_state(config):
         if config.get('model_provider', 'openai') == 'openai' and config.get('model'):
             saved['selection']['cloud'] = {'model': config['model']}
     if saved.get('version') != 1:
-        raise RuntimeError('Versión desconocida de provider_switch_state.json')
+        raise RuntimeError('Unknown provider_switch_state.json version')
     return saved
 
 def select_options(mode, config, state, requested=None):
@@ -376,22 +376,22 @@ def select_options(mode, config, state, requested=None):
         available = {m['slug']: m for m in models}
         model = requested or state['selection'].get('local', {}).get('model') or models[0]['slug']
         if model not in available:
-            raise ValueError(f'Modelo local ausente del catálogo: {model}. Ejecuta llama-codex.py catalog.')
+            raise ValueError(f'Local model missing from the catalog: {model}. Run llama-codex.py catalog.')
         return {'model_provider': 'llamacpp', 'model': model,
                 'model_catalog_json': str(CATALOG), 'model_reasoning_effort': 'none',
                 'web_search': 'disabled'}
     model = requested or state['selection'].get('cloud', {}).get('model') or profile.get('model')
     if not model:
-        raise RuntimeError('Define un modelo en openai-cloud.config.toml o usa --model.')
+        raise RuntimeError('Set a model in openai-cloud.config.toml or use --model.')
     return {'model_provider': 'openai', 'model': model, **state['cloud_options']}
 
 def status(config, db):
-    print('Proveedor configurado:', config.get('model_provider', 'openai'))
-    print('Modelo configurado:', config.get('model', '(predeterminado)'))
-    print('Catálogo:', config.get('model_catalog_json') or config.get('model_providers',{}).get(config.get('model_provider','openai'),{}).get('model_catalog_url') or '(catálogo OpenAI)')
+    print('Configured provider:', config.get('model_provider', 'openai'))
+    print('Configured model:', config.get('model', '(default)'))
+    print('Catalog:', config.get('model_catalog_json') or config.get('model_providers',{}).get(config.get('model_provider','openai'),{}).get('model_catalog_url') or '(OpenAI catalog)')
     print('SQLite:', db)
     with sqlite3.connect(f'{db.as_uri()}?mode=ro', uri=True) as con:
-        print('Conversaciones por proveedor:', dict(con.execute('SELECT model_provider, COUNT(*) FROM threads GROUP BY model_provider')))
+        print('Chats by provider:', dict(con.execute('SELECT model_provider, COUNT(*) FROM threads GROUP BY model_provider')))
 
 def switch(args):
     if args.mode == 'local' and not args.dry_run:
@@ -410,7 +410,7 @@ def switch(args):
         provider = config.get('model_providers', {}).get('llamacpp', {})
         if selection['model_provider'] == 'llamacpp' and (
                 provider.get('base_url') != 'http://127.0.0.1:9931/v1' or provider.get('wire_api') != 'responses'):
-            raise RuntimeError('El proveedor llamacpp no tiene la URL o wire_api esperados.')
+            raise RuntimeError('The llamacpp provider does not have the expected URL or wire_api.')
         con = sqlite3.connect(f'{db.as_uri()}?mode=rw', uri=True, timeout=15)
         con.row_factory = sqlite3.Row
         backup = None
@@ -494,7 +494,7 @@ def switch(args):
             after = {row['id']: row for row in con.execute('SELECT * FROM threads WHERE model_provider IN ' + ELIGIBLE)}
             if len(after) != len(rows) or any(
                     any(row[k] != after[row['id']][k] for k in protected) for row in rows):
-                raise RuntimeError('La verificación detectó cambios fuera de los campos de proveedor/modelo.')
+                raise RuntimeError('Verification detected changes outside the provider/model fields.')
             state['selection'][args.mode] = {'model': selection['model']}
             state['active'] = args.mode
             state['last_backup'] = str(backup)
@@ -506,7 +506,7 @@ def switch(args):
             state_written = True
             # Detect an editor/desktop write since the start; never overwrite it silently.
             if CONFIG.read_text() != original:
-                raise RuntimeError('config.toml cambió durante el switch; vuelve a ejecutar el comando.')
+                raise RuntimeError('config.toml changed during the switch; run the command again.')
             atomic_write(CONFIG, updated)
             config_written = True
             con.commit()
@@ -525,15 +525,15 @@ def switch(args):
         finally:
             con.close()
             writer_locks.close()
-        print(f'Switch a {args.mode}: {selection["model"]}')
-        print(f'{changed_count} entradas sincronizadas en {db}; contenido de mensajes y memoria conservados.')
-        print(f'{len(rollout_backups)} archivos de sesión: metadatos de proveedor/modelo sincronizados y respaldados.')
+        print(f'Switched to {args.mode}: {selection["model"]}')
+        print(f'{changed_count} entries synchronized in {db}; message content and stored context preserved.')
+        print(f'{len(rollout_backups)} session files: provider/model metadata synchronized and backed up.')
         if missing:
-            print(f'Nota: {missing} entradas ya apuntaban a historiales ausentes; se conserva su índice sin inventar contenido.')
+            print(f'Note: {missing} entries already pointed to missing histories; their index is preserved without fabricating content.')
         if skipped:
-            print(f'Pendientes: {len(skipped)} conversaciones activas bloqueadas. Cierra la app/CLI y repite el mismo comando.')
-        print('Respaldo:', backup)
-        print('Cierra y vuelve a abrir Codex Desktop para aplicar el proveedor y renovar el selector.')
+            print(f'Pending: {len(skipped)} locked active chats. Close the app/CLI and run the same command again.')
+        print('Backup:', backup)
+        print('Close and reopen Codex Desktop to apply the provider and refresh the model picker.')
 
 
 # Interactive entry point. Everything above is embedded here so this script
@@ -556,7 +556,7 @@ def server_models():
     with opener.open(SERVER_URL + '/v1/models', timeout=2) as response:
         payload = json.load(response)
     if not isinstance(payload.get('data'), list):
-        raise ValueError('El puerto 9931 no devuelve una lista de modelos compatible.')
+        raise ValueError('Port 9931 does not return a compatible model list.')
     return payload['data']
 
 
@@ -583,38 +583,38 @@ def process_command(pid):
 def start_server():
     with locked():
         if server_online():
-            print('llama.cpp ya está disponible en ' + SERVER_URL)
+            print('llama.cpp is already available at ' + SERVER_URL)
             return
         if listener_pids():
-            raise RuntimeError('El puerto 9931 está ocupado por un servicio que no responde como llama.cpp.')
+            raise RuntimeError('Port 9931 is occupied by a service that does not respond as llama.cpp.')
         if not LLAMA.is_file():
-            raise RuntimeError('No se encontró llama. Inicia llama.cpp en el puerto 9931 o define LLAMA_CPP_BIN.')
+            raise RuntimeError('Could not find llama. Start llama.cpp on port 9931 or set LLAMA_CPP_BIN.')
         SERVER_LOG.parent.mkdir(parents=True, exist_ok=True)
         with SERVER_LOG.open('ab') as output:
             process = subprocess.Popen(SERVER_COMMAND, stdin=subprocess.DEVNULL, stdout=output,
                                        stderr=output, start_new_session=True)
         atomic_write(SERVER_PID, str(process.pid) + '\n')
-        print('Iniciando llama.cpp en segundo plano...', flush=True)
+        print('Starting llama.cpp in the background...', flush=True)
         deadline = time.monotonic() + 25
         while time.monotonic() < deadline:
             if process.poll() is not None:
-                raise RuntimeError(f'llama.cpp terminó al arrancar. Consulta {SERVER_LOG}')
+                raise RuntimeError(f'llama.cpp exited during startup. Check {SERVER_LOG}')
             if server_online():
-                print('Servidor listo en ' + SERVER_URL)
+                print('Server ready at ' + SERVER_URL)
                 return
             time.sleep(0.25)
-        raise RuntimeError(f'El servidor sigue arrancando. Consulta su estado o revisa {SERVER_LOG}')
+        raise RuntimeError(f'The server is still starting. Check its status or inspect {SERVER_LOG}')
 
 
 def stop_server():
     with locked():
         pids = listener_pids()
         if not pids:
-            print('El servidor local ya está detenido.')
+            print('The local server is already stopped.')
             return
         if len(pids) != 1 or process_command(pids[0]) != SERVER_COMMAND:
-            raise RuntimeError('El servidor del puerto 9931 no fue iniciado con este preset. '
-                               'Detén ese servidor desde su Terminal original.')
+            raise RuntimeError('The server on port 9931 was not started with this preset. '
+                               'Stop that server from its original terminal.')
         pid = pids[0]
         # Refuse to interrupt an active generation. GET /slots is read-only.
         for model in server_models():
@@ -624,18 +624,18 @@ def stop_server():
             with urllib.request.urlopen(SERVER_URL + '/slots?' + query, timeout=3) as response:
                 slots = json.load(response)
             if not isinstance(slots, list) or any(slot.get('is_processing') for slot in slots):
-                raise RuntimeError('Hay una generación local en curso; espera a que termine y vuelve a intentarlo.')
+                raise RuntimeError('A local generation is in progress; wait for it to finish and try again.')
         if process_command(pid) != SERVER_COMMAND:
-            raise RuntimeError('El proceso del servidor cambió; vuelve a consultar su estado.')
+            raise RuntimeError('The server process changed; check its status again.')
         os.kill(pid, signal.SIGTERM)
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if pid not in listener_pids():
                 SERVER_PID.unlink(missing_ok=True)
-                print('Servidor llama.cpp detenido.')
+                print('llama.cpp server stopped.')
                 return
             time.sleep(0.25)
-        raise RuntimeError('El servidor está terminando. Revisa el estado antes de volver a iniciarlo.')
+        raise RuntimeError('The server is shutting down. Check its status before starting it again.')
 
 
 def show_status():
@@ -643,17 +643,17 @@ def show_status():
     status(config, database_path(config))
     try:
         models = server_models()
-        print(f'llama.cpp: activo · {len(models)} modelos disponibles')
+        print(f'llama.cpp: running · {len(models)} models available')
         loaded = [m['id'] for m in models if m.get('status', {}).get('value') == 'loaded']
         if loaded:
-            print('Cargados:', ', '.join(loaded))
+            print('Loaded:', ', '.join(loaded))
     except (OSError, ValueError):
-        print('llama.cpp: detenido o no disponible')
+        print('llama.cpp: stopped or unavailable')
     if STATE.exists():
         saved = json.loads(STATE.read_text())
-        print('Último respaldo:', saved.get('last_backup', '(ninguno)'))
+        print('Last backup:', saved.get('last_backup', '(none)'))
         if saved.get('pending_active_threads'):
-            print('Chats pendientes del último switch:', len(saved['pending_active_threads']))
+            print('Pending chats from the last switch:', len(saved['pending_active_threads']))
 
 
 def choose_model(mode):
@@ -672,15 +672,15 @@ def choose_model(mode):
                     break
     config = read_toml(CONFIG)
     saved = initial_state(config)
-    default = saved.get('selection', {}).get(mode, {}).get('model', '(predeterminado)')
-    print('\nSeleccionar modelo ' + ('local' if mode == 'local' else 'de OpenAI'))
-    print(f'  0. Restaurar preferencias por chat (último predeterminado: {default})')
+    default = saved.get('selection', {}).get(mode, {}).get('model', '(default)')
+    print('\nSelect a model: ' + ('local' if mode == 'local' else 'OpenAI'))
+    print(f'  0. Restore per-chat preferences (last default: {default})')
     for number, model in enumerate(entries, 1):
         print(f'  {number}. {model.get("display_name", model["slug"])}')
-    print('  m. Escribir el identificador de un modelo')
-    print('  v. Volver al menú')
+    print('  m. Enter a model identifier')
+    print('  v. Return to the menu')
     while True:
-        answer = input('Modelo [0]: ').strip().lower()
+        answer = input('Model [0]: ').strip().lower()
         if answer == 'v':
             return False, None
         if not answer or answer == '0':
@@ -689,16 +689,16 @@ def choose_model(mode):
                 return True, entries[0]['slug']
             return True, None
         if answer == 'm':
-            model = input('Identificador del modelo (vacío para volver): ').strip()
+            model = input('Model identifier (leave empty to go back): ').strip()
             if model:
                 if mode == 'local' and model not in {m['slug'] for m in entries}:
-                    print('Ese modelo no aparece en el catálogo local.')
+                    print('That model is not in the local catalog.')
                     continue
                 return True, model
         elif answer.isdigit() and 1 <= int(answer) <= len(entries):
             return True, entries[int(answer) - 1]['slug']
         else:
-            print('Elige un número válido, m o v.')
+            print('Choose a valid number, m, or v.')
 
 
 def perform_switch(mode, model=None, dry_run=False, db=None):
@@ -710,43 +710,43 @@ def perform_switch(mode, model=None, dry_run=False, db=None):
 
 def watch_catalog(interval=5):
     if interval < 2:
-        raise ValueError('El intervalo debe ser de al menos dos segundos.')
-    print(f'Actualizando cada {interval:g} segundos. Ctrl+C vuelve al menú.', flush=True)
-    print('En modo unificado el catálogo se sirve dinámicamente; abre de nuevo el selector para consultarlo.')
+        raise ValueError('The interval must be at least two seconds.')
+    print(f'Updating every {interval:g} seconds. Ctrl+C returns to the menu.', flush=True)
+    print('In unified mode, the catalog is served dynamically; reopen the picker to view it.')
     try:
         while True:
             try:
                 update(quiet=True)
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-                print(f'Error al actualizar: {error}', file=sys.stderr)
+                print(f'Update error: {error}', file=sys.stderr)
             time.sleep(interval)
     except KeyboardInterrupt:
-        print('\nSeguimiento detenido.')
+        print('\nCatalog watcher stopped.')
 
 
 def menu():
     if not sys.stdin.isatty():
         # Piped input is useful for scripting and smoke tests; EOF exits cleanly.
-        print('Menú por entrada estándar. También puedes usar --help para los comandos directos.')
+        print('Reading menu input from stdin. Use --help to list direct commands.')
     while True:
         try:
             config = read_toml(CONFIG)
             provider = config.get('model_provider', 'openai')
-            print('\nCodex · Modelos y proveedores')
-            print(f'  Actual: {provider} · {config.get("model", "predeterminado")}')
-            print('  1. Usar local y elegir modelo (arranca llama.cpp si hace falta)')
-            print('  2. Usar OpenAI y elegir modelo')
-            print('  3. Actualizar catálogo de modelos')
-            print('  4. Mantener catálogo actualizado cada 5 segundos')
-            print('  5. Iniciar servidor llama.cpp')
-            print('  6. Detener servidor llama.cpp')
-            print('  7. Ver estado y último respaldo')
-            print('  8. Activar/sincronizar proveedor unificado')
-            print('  9. Volver al acceso directo a OpenAI')
-            print('  0. Salir')
-            choice = input('\nOpción: ').strip()
+            print('\nCodex · Models and providers')
+            print(f'  Current: {provider} · {config.get("model", "default")}')
+            print('  1. Use local models and choose a model (starts llama.cpp if needed)')
+            print('  2. Use OpenAI and choose a model')
+            print('  3. Update the model catalog')
+            print('  4. Keep the catalog updated every 5 seconds')
+            print('  5. Start the llama.cpp server')
+            print('  6. Stop the llama.cpp server')
+            print('  7. Show status and last backup')
+            print('  8. Enable/synchronize the unified provider')
+            print('  9. Restore direct OpenAI access')
+            print('  0. Exit')
+            choice = input('\nOption: ').strip()
             if choice == '0':
-                print('Hasta luego.')
+                print('Goodbye.')
                 return 0
             if choice in ('1', '2'):
                 mode = 'local' if choice == '1' else 'cloud'
@@ -755,7 +755,7 @@ def menu():
                     perform_switch(mode, model)
             elif choice == '3':
                 update()
-                print('Catálogo actualizado. Los modelos del catálogo unificado comparten el mismo proveedor.')
+                print('Catalog updated. All unified catalog models share the same provider.')
             elif choice == '4':
                 watch_catalog()
             elif choice == '5':
@@ -769,12 +769,12 @@ def menu():
             elif choice == '9':
                 unified_restore()
             else:
-                print('Opción inválida; elige un número del menú.')
+                print('Invalid option; choose a menu number.')
         except EOFError:
-            print('\nMenú cerrado.')
+            print('\nMenu closed.')
             return 0
         except KeyboardInterrupt:
-            print('\nOperación cancelada; vuelves al menú.')
+            print('\nOperation cancelled; returning to the menu.')
         except (OSError, ValueError, RuntimeError, sqlite3.Error, subprocess.SubprocessError) as error:
             print(f'Error: {error}', file=sys.stderr)
 
@@ -831,7 +831,7 @@ def unified_prepare():
                     cache = json.loads(result.stdout)
                     break
         if not cache.get('models'):
-            raise RuntimeError('Abre Codex e inicia sesión, o instala una CLI con debug models --bundled.')
+            raise RuntimeError('Open Codex and sign in, or install a CLI that supports debug models --bundled.')
         # Preserve a separate upstream catalog; Codex's own cache will eventually
         # contain the merged gateway catalog and must not become its cloud seed.
         cloud = [m for m in cache['models'] if m['slug'].startswith(('gpt-', 'codex-'))]
@@ -856,7 +856,7 @@ def unified_catalog_build(offline=False):
             bundled = {m['slug']: m for m in json.loads(result.stdout)['models']}
             break
     if not bundled:
-        raise RuntimeError('No se pudo leer el catálogo incluido en Codex.')
+        raise RuntimeError('Could not read the catalog bundled with Codex.')
     cloud = json.loads(UNIFIED_CLOUD_CATALOG.read_text()).get('models', [])
     fallback = bundled.get('gpt-6.1-sol', next(iter(bundled.values())))
     models = []
@@ -873,7 +873,7 @@ def unified_catalog_build(offline=False):
     for index, model in enumerate(local['models']):
         slug = model['slug']
         if slug in routes:
-            raise ValueError('Modelo duplicado entre proveedores: ' + slug)
+            raise ValueError('Duplicate model across providers: ' + slug)
         model['display_name'] = model['display_name'].removesuffix(' (local)') + ' · Local'
         model['priority'] = 100 + index
         model['use_responses_lite'] = False
@@ -899,7 +899,7 @@ def unified_catalog_update(validate=True, quiet=False, offline=False):
             atomic_write(UNIFIED_CATALOG, data)
     if not quiet:
         counts = collections.Counter(catalog['routes'].values())
-        print(f'Catálogo unificado: {counts["cloud"]} modelos OpenAI y {counts["local"]} locales.')
+        print(f'Unified catalog: {counts["cloud"]} OpenAI models and {counts["local"]} local models.')
         if warning:
             print(warning)
     return catalog
@@ -1243,10 +1243,10 @@ def unified_start():
     except (OSError, ValueError, KeyError):
         pass
     if sys.platform != 'darwin':
-        raise RuntimeError('El servicio automático requiere macOS. Usa gateway-serve en primer plano.')
+        raise RuntimeError('The background service requires macOS. Run gateway-serve in the foreground.')
     executable = str(Path(sys.executable).resolve())
     if not executable:
-        raise RuntimeError('No se encontró Python 3.')
+        raise RuntimeError('Could not find Python 3.')
     logs = CODEX_DIR / 'logs'
     logs.mkdir(exist_ok=True)
     definition = {'Label': UNIFIED_LABEL,
@@ -1267,12 +1267,12 @@ def unified_start():
     while time.monotonic() < deadline:
         try:
             if unified_request()['service'] == 'codex-unified':
-                print('Enrutador unificado disponible en ' + UNIFIED_URL)
+                print('Unified gateway available at ' + UNIFIED_URL)
                 return
         except (OSError, ValueError, KeyError):
             pass
         time.sleep(.25)
-    raise RuntimeError('El enrutador no arrancó; revisa ~/.codex/logs/unified-gateway.error.log')
+    raise RuntimeError('The gateway failed to start; check ~/.codex/logs/unified-gateway.error.log')
 
 
 def unified_config(original, model=None):
@@ -1316,7 +1316,7 @@ def unified_activate():
             backup = CODEX_DIR / 'backups' / ('unified-initial-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
             atomic_write(backup / 'config.toml', original)
             atomic_write(CONFIG, unified_config(original))
-            print('Proveedor unificado configurado. No existen chats que migrar. Vuelve a abrir Codex una vez.')
+            print('Unified provider configured. No existing chats need migration. Reopen Codex once.')
             return
         settings_before = UNIFIED_SETTINGS.read_bytes()
         settings = json.loads(settings_before)
@@ -1358,7 +1358,7 @@ def unified_activate():
                     header, separator, rest = before.partition(b'\n')
                     meta = json.loads(header)
                     if meta.get('type') != 'session_meta':
-                        raise ValueError('Encabezado de sesión desconocido: '+str(path))
+                        raise ValueError('Unknown session header: '+str(path))
                     if meta['payload'].get('model_provider') != UNIFIED_PROVIDER:
                         meta['payload']['model_provider'] = UNIFIED_PROVIDER
                         copy = backup/'rollouts'/(row['id']+'.jsonl')
@@ -1372,13 +1372,13 @@ def unified_activate():
             after = {r['id']:r for r in con.execute('SELECT * FROM threads WHERE model_provider IN '+eligible)}
             if len(after)!=len(rows) or any(any(row[k]!=after[row['id']][k]
                     for k in row.keys() if k!='model_provider') for row in rows):
-                raise RuntimeError('La migración alteró campos fuera del proveedor.')
+                raise RuntimeError('Migration changed fields other than the provider.')
             settings.setdefault('initial_backup', str(backup))
             settings.update({'enabled':True,'last_backup':str(backup),'pending_active_threads':skipped})
             atomic_write(backup/'rollout-manifest.json',json_text([
                 {'path':str(p),'backup':str(b)} for p,b in copies]))
             if CONFIG.read_text()!=original:
-                raise RuntimeError('La configuración cambió durante la activación; repite el comando.')
+                raise RuntimeError('Configuration changed during activation; run the command again.')
             atomic_write(CONFIG,updated);config_written=True
             atomic_write(UNIFIED_SETTINGS,json_text(settings));settings_written=True
             con.commit()
@@ -1390,11 +1390,11 @@ def unified_activate():
             raise
         finally:
             con.close();locks.close()
-        print(f'Proveedor unificado activado. {changed} entradas sincronizadas; modelos e historial conservados.')
-        print('Respaldo:',backup)
-        if skipped:print(f'Pendientes: {len(skipped)} chats abiertos. Cierra Codex y ejecuta de nuevo: python3 ~/.codex/llama-codex.py unified')
-        if missing:print(f'Se conservaron {missing} entradas con archivos de historial previamente ausentes.')
-        print('Tras esta activación, vuelve a abrir Codex una vez. Después cambia local/OpenAI desde el selector.')
+        print(f'Unified provider enabled. {changed} entries synchronized; models and history preserved.')
+        print('Backup:',backup)
+        if skipped:print(f'Pending: {len(skipped)} open chats. Close Codex and run again: python3 ~/.codex/llama-codex.py unified')
+        if missing:print(f'Preserved {missing} entries whose history files were already missing.')
+        print('After activation, reopen Codex once. Then switch between local/OpenAI models in the picker.')
 
 
 def unified_select(mode, model=None, dry_run=False):
@@ -1404,7 +1404,7 @@ def unified_select(mode, model=None, dry_run=False):
     if not model or catalog['routes'].get(model)!=mode:
         model = next((m for m,r in catalog['routes'].items() if r==mode), None)
         if model is None:
-            raise ValueError('No hay modelos disponibles para ' + mode)
+            raise ValueError('No models available for ' + mode)
     if dry_run:
         print(json_text({'provider':UNIFIED_PROVIDER,'model':model,'route':mode,'changes_to_threads':0}))
         return
@@ -1415,9 +1415,9 @@ def unified_select(mode, model=None, dry_run=False):
         atomic_write(CONFIG,unified_config(original,model))
         state.setdefault('selection',{})[mode]={'model':model}
         atomic_write(STATE,json_text(state))
-    print('Modelo predeterminado:',model)
-    print('El proveedor sigue siendo codex-unified; no se modificaron conversaciones.')
-    print('Para cambiar este chat abierto, elige el modelo en el selector de Codex Desktop.')
+    print('Default model:',model)
+    print('The provider remains codex-unified; no chats were modified.')
+    print('To change the model in an open chat, use the Codex Desktop model picker.')
 
 
 def unified_restore():
@@ -1431,12 +1431,12 @@ def unified_restore():
         catalog = json.loads(UNIFIED_CATALOG.read_text())
         restore_model = next((m for m, route in catalog['routes'].items() if route == 'cloud'), None)
         if restore_model is None:
-            raise RuntimeError('No hay modelo cloud para restaurar el proveedor directo.')
+            raise RuntimeError('No cloud model is available to restore the direct provider.')
     switch(argparse.Namespace(mode='cloud', model=restore_model, dry_run=False, db=None, status=False))
     with locked():
         settings=unified_settings();settings['enabled']=False
         atomic_write(UNIFIED_SETTINGS,json_text(settings))
-    print('Restaurado el acceso directo a OpenAI. Vuelve a abrir Codex para aplicarlo.')
+    print('Direct OpenAI access restored. Reopen Codex to apply it.')
 
 
 legacy_update_catalog = update
@@ -1449,14 +1449,14 @@ def show_status():
     status(config,database_path(config))
     try:
         state=unified_request('/status')
-        print('Enrutador: activo · '+str(state['models'].get('local',0))+' locales / '+str(state['models'].get('cloud',0))+' entradas OpenAI')
+        print('Gateway: running · '+str(state['models'].get('local',0))+' local / '+str(state['models'].get('cloud',0))+' OpenAI entries')
     except (OSError,ValueError):
-        print('Enrutador: no disponible; usa hybrid-start para iniciarlo.')
-    print('llama.cpp: '+('activo' if server_online() else 'se iniciará al elegir un modelo local'))
+        print('Gateway: unavailable; use hybrid-start to start it.')
+    print('llama.cpp: '+('running' if server_online() else 'will start when a local model is selected'))
     saved=unified_settings()
-    print('Último respaldo:',saved.get('last_backup','(ninguno)'))
+    print('Last backup:',saved.get('last_backup','(none)'))
     if saved.get('pending_active_threads'):
-        print('Chats pendientes de la migración inicial:',len(saved['pending_active_threads']))
+        print('Pending chats from the initial migration:',len(saved['pending_active_threads']))
 
 def update(offline=False, quiet=False):
     if read_toml(CONFIG).get('model_provider') == UNIFIED_PROVIDER:
@@ -1475,38 +1475,38 @@ def install_script():
         atomic_write(destination, source.read_bytes())
     if not CONFIG.exists():
         atomic_write(CONFIG, '')
-    print('Script instalado en:', destination)
-    print('Activa el proveedor unificado: python3 ' + str(destination) + ' unified')
+    print('Script installed at:', destination)
+    print('Enable the unified provider: python3 ' + str(destination) + ' unified')
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command')
-    commands.add_parser('install', help='Instalar el script en CODEX_HOME sin migrar conversaciones')
+    commands.add_parser('install', help='Install the script in CODEX_HOME without migrating chats')
     for mode in ('local', 'cloud'):
-        command = commands.add_parser(mode, help='Cambiar al proveedor ' + mode)
-        command.add_argument('--model', help='Identificador del modelo')
-        command.add_argument('--dry-run', action='store_true', help='Mostrar los cambios sin aplicarlos')
-        command.add_argument('--db', help='Ruta explícita de SQLite')
-    commands.add_parser('status', help='Mostrar estado')
-    commands.add_parser('start', help='Iniciar llama.cpp si está apagado')
-    commands.add_parser('stop', help='Detener el servidor iniciado con el preset de Codex')
-    catalog = commands.add_parser('catalog', help='Actualizar el catálogo')
-    catalog.add_argument('--offline', action='store_true', help='Usar solo perfiles locales')
-    watch = commands.add_parser('watch', help='Actualizar periódicamente hasta Ctrl+C')
-    watch.add_argument('--interval', type=float, default=5, help='Segundos entre actualizaciones (mínimo 2)')
+        command = commands.add_parser(mode, help='Switch to provider ' + mode)
+        command.add_argument('--model', help='Model identifier')
+        command.add_argument('--dry-run', action='store_true', help='Show changes without applying them')
+        command.add_argument('--db', help='Explicit SQLite path')
+    commands.add_parser('status', help='Show status')
+    commands.add_parser('start', help='Start llama.cpp if it is stopped')
+    commands.add_parser('stop', help='Stop the server started with the Codex preset')
+    catalog = commands.add_parser('catalog', help='Update the catalog')
+    catalog.add_argument('--offline', action='store_true', help='Use local profiles only')
+    watch = commands.add_parser('watch', help='Update periodically until Ctrl+C')
+    watch.add_argument('--interval', type=float, default=5, help='Seconds between updates (minimum 2)')
     commands.add_parser('gateway-serve', help=argparse.SUPPRESS)
-    commands.add_parser('unified', help='Activar proveedor único local + OpenAI y sincronizar chats pendientes')
-    commands.add_parser('restore', help='Volver al proveedor directo de OpenAI')
-    commands.add_parser('hybrid-catalog', help='Actualizar catálogo local y OpenAI')
-    commands.add_parser('hybrid-start', help='Iniciar enrutador unificado')
-    commands.add_parser('hybrid-status', help='Estado del enrutador unificado')
+    commands.add_parser('unified', help='Enable one local + OpenAI provider and synchronize pending chats')
+    commands.add_parser('restore', help='Restore the direct OpenAI provider')
+    commands.add_parser('hybrid-catalog', help='Update the local and OpenAI catalog')
+    commands.add_parser('hybrid-start', help='Start the unified gateway')
+    commands.add_parser('hybrid-status', help='Show unified gateway status')
     args = parser.parse_args()
     if args.command == 'install':
         install_script()
         return 0
     if not CONFIG.exists():
-        raise RuntimeError('Primero ejecuta llama-codex.py install o inicia Codex para crear config.toml.')
+        raise RuntimeError('Run llama-codex.py install first, or start Codex to create config.toml.')
     if args.command == 'gateway-serve':
         unified_serve()
         return 0
@@ -1548,7 +1548,7 @@ if __name__ == '__main__':
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        print('\nOperación cancelada.')
+        print('\nOperation cancelled.')
         sys.exit(130)
     except (OSError, ValueError, RuntimeError, sqlite3.Error, subprocess.SubprocessError) as error:
         print(f'Error: {error}', file=sys.stderr)

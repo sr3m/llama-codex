@@ -1,49 +1,52 @@
 # llama.cpp Inline
 
-Autocompletado de código en VS Code usando tu servidor llama.cpp. Escribes, aparece una sugerencia en gris y la aceptas con **Tab**. **Esc** la descarta.
+Local code completion in VS Code using your llama.cpp server. Type, wait for a gray inline suggestion, and accept it with **Tab**. Press **Esc** to dismiss it.
 
-La extensión consulta directamente al servidor configurado; no necesita Codex, Copilot ni el enrutador de `llama-codex`.
+The extension talks directly to the configured server. It does not require Codex, Copilot, or the `llama-codex` gateway.
 
-## Instalación del VSIX
+## Install a VSIX
 
-1. Abre Extensiones en VS Code.
-2. En el menú `…`, elige **Install from VSIX… / Instalar desde VSIX…**.
-3. Selecciona `llama-cpp-inline-0.1.0.vsix`.
-4. Si VS Code solicita recargar la ventana, hazlo.
+1. Open Extensions in VS Code.
+2. From the `…` menu, select **Install from VSIX…**.
+3. Choose `llama-cpp-inline-0.1.1.vsix`.
+4. Reload the window if VS Code requests it.
 
-## Empezar
+To build the package from source, see [Development and tests](#development-and-tests).
 
-1. Mantén llama.cpp escuchando en `http://127.0.0.1:9931` o configura la URL que uses.
-2. Abre la paleta con **⌘⇧P** en macOS o **Ctrl+Shift+P** en Windows/Linux.
-3. Ejecuta **llama.cpp: Comprobar conexión**.
-4. Ejecuta **llama.cpp: Seleccionar modelo** y elige un modelo de código.
-5. Abre un archivo de código y escribe. Pausa un momento y acepta la sugerencia con **Tab**.
+## Get started
 
-Ejemplo en Python, con el cursor después del espacio que sigue a `return`:
+1. Run llama.cpp at `http://127.0.0.1:9931`, or configure your server URL.
+2. Open a trusted project. Restricted Mode disables this extension.
+3. Open the Command Palette with **Cmd+Shift+P** on macOS or **Ctrl+Shift+P** on Windows/Linux.
+4. Run **llama.cpp: Check Connection**.
+5. Run **llama.cpp: Select Model** and choose a coding model.
+6. Open a code file and type. Pause briefly, then accept the suggestion with **Tab**.
+
+For example, place the cursor after the space following `return` in this Python function:
 
 ```python
-def sumar(a, b):
+def add(a, b):
     return
 ```
 
-Un modelo adecuado puede proponer `a + b`. La salida depende de sus pesos y del contexto; revísala como cualquier código generado.
+A suitable model may suggest `a + b`. Output depends on the model and its context; review generated code before using it.
 
-También puedes solicitar una sugerencia con **llama.cpp: Completar código ahora**, **⌘⌥Espacio** en macOS o **Ctrl+Alt+Espacio**. Si el sistema captura ese atajo, reasígnalo desde Atajos de teclado o usa la paleta. La barra de estado `llama.cpp` permite abrir el selector de modelos.
+Request a suggestion manually with **llama.cpp: Complete Code Now**, **Cmd+Alt+Space** on macOS, or **Ctrl+Alt+Space** elsewhere. If your operating system intercepts the shortcut, reassign it in Keyboard Shortcuts or use the Command Palette. Click `llama.cpp` in the status bar to select a model.
 
-## Cómo completa
+## How completion works
 
-- Toma hasta 4000 caracteres anteriores al cursor y 1500 posteriores, únicamente del documento o celda activos.
-- Espera 450 ms sin escribir antes de solicitar la sugerencia automática.
-- En modo `auto`, solicita `/infill` de llama.cpp con el prefijo y el sufijo.
-- Si el servidor indica que ese modelo no admite FIM, utiliza `/v1/chat/completions` en el mismo servidor. Recuerda esa incompatibilidad durante la sesión.
-- Recibe el fragmento generado y lo muestra mediante la API de sugerencias en línea de VS Code.
-- Si sigues escribiendo o mueves el editor a otro documento, cancela la solicitud. Descarta respuestas de una versión antigua del archivo.
+- Reads up to 4,000 characters before the cursor and 1,500 after it, from the active document or notebook cell only.
+- Waits for a 450 ms typing pause before requesting an automatic suggestion.
+- In `auto` mode, calls llama.cpp's `/infill` endpoint with the code prefix and suffix.
+- If the server reports that the model does not support FIM, uses `/v1/chat/completions` on the same server. That capability result is remembered for the session.
+- Displays the generated fragment through VS Code's inline completion API.
+- Cancels pending work when you keep typing or switch documents, and discards responses for an older document version.
 
-Por defecto completa **una línea**, con un máximo de 64 tokens. Activa `multiline` para bloques de hasta 12 líneas. Un modelo pequeño especializado en código suele dar una experiencia más rápida que uno grande orientado a conversaciones. No descarga pesos ni inicia servidores.
+By default, suggestions complete **one line**, with a maximum of 64 generated tokens. Enable `multiline` for blocks of up to 12 lines. A small coding model usually offers lower latency than a large conversational model. The extension does not download weights or start servers.
 
-## Configuración
+## Settings
 
-Busca **llama.cpp Inline** en Settings / Configuración. Ejemplo de ajustes de usuario:
+Search for **llama.cpp Inline** in Settings. Example user configuration:
 
 ```json
 {
@@ -59,43 +62,43 @@ Busca **llama.cpp Inline** en Settings / Configuración. Ejemplo de ajustes de u
 }
 ```
 
-| Ajuste | Uso |
+| Setting | Purpose |
 | --- | --- |
-| `endpoint` | URL raíz o terminada en `/v1`. Por defecto usa el servidor local del puerto 9931. |
-| `model` | ID exacto opcional. Vacío utiliza la selección guardada; en ausencia de selección, prioriza un modelo Coder cargado. |
-| `mode` | `auto`, `infill` o `chat`. |
-| `automatic` | `false` permite pedir sugerencias solo manualmente. |
-| `multiline` | Permite insertar varias líneas. |
-| `prefixChars` / `suffixChars` | Cuánto contexto del archivo activo se envía. |
-| `timeoutMs` | Límite de espera por petición HTTP. Auméntalo si el modelo debe cargarse. |
-| `excludedLanguages` | Lenguajes sin sugerencias. Por defecto excluye texto plano, Markdown y mensajes de Git. |
+| `endpoint` | Server root URL or `/v1` URL. Defaults to local port 9931. |
+| `model` | Optional exact model ID. When empty, uses your saved selection, or prefers an available loaded coding model. |
+| `mode` | `auto`, `infill`, or `chat`. |
+| `automatic` | Set to `false` to request suggestions manually only. |
+| `multiline` | Allow suggestions spanning multiple lines. |
+| `prefixChars` / `suffixChars` | Limit active-file context sent to the server. |
+| `timeoutMs` | Maximum wait per HTTP request. Increase it when a model needs loading. |
+| `excludedLanguages` | Languages without suggestions. Defaults to plain text, Markdown, and Git input. |
 
-`endpoint` y `model` son ajustes de máquina: un repositorio abierto no puede cambiarlos mediante su configuración de workspace. La selección de modelo se conserva por servidor en el almacenamiento de la extensión. La extensión corre en el lado de la interfaz (`extensionKind: ui`), por lo que en Remote SSH/WSL `127.0.0.1` se refiere al equipo donde está abierta la interfaz de VS Code.
+`endpoint` and `model` are machine-scoped settings: a repository cannot override them through workspace configuration. Selected models are stored separately for each endpoint. The extension runs on the UI side (`extensionKind: ui`), so in Remote SSH/WSL, `127.0.0.1` refers to the machine running the VS Code interface.
 
-Si llama.cpp utiliza autenticación, ejecuta **llama.cpp: Configurar clave del servidor**. Se guarda en **SecretStorage** de VS Code, separada por endpoint. Un valor vacío elimina la clave.
+If your server requires authentication, run **llama.cpp: Set Server API Key**. The key is stored in VS Code **SecretStorage**, separately for each endpoint. Leave the input empty to remove the saved key.
 
-## Si no aparecen sugerencias
+## Troubleshooting
 
-- Comprueba la conexión y el modelo desde la paleta.
-- Espera a que cargue el modelo; la primera solicitud puede ser más lenta. Puedes aumentar `timeoutMs`.
-- Verifica que `editor.inlineSuggest.enabled` esté activado y que el archivo tenga el lenguaje correcto.
-- Si aparece el menú habitual de IntelliSense, ciérralo con **Esc** y pide la sugerencia otra vez. Esta primera versión evita competir con una opción seleccionada de ese menú.
-- Consulta la barra de estado; al pasar el cursor muestra el modelo, modo o motivo del error.
-- En Output / Salida → **llama.cpp Inline**, los errores muestran un código y estado HTTP, sin el cuerpo de las solicitudes.
-- Si un modelo instruct no completa bien en FIM, configura el modo `chat` o elige un modelo base de código compatible con FIM.
-- Usa **llama.cpp: Activar/desactivar autocompletado** para pausarlo.
+- Check the connection and model selection from the Command Palette.
+- Wait for model loading; the first request may be slower. Increase `timeoutMs` if needed.
+- Make sure `editor.inlineSuggest.enabled` is enabled and the document has the correct language mode.
+- If the standard IntelliSense menu is open, dismiss it with **Esc** and request completion again. This version avoids competing with a selected entry in that menu.
+- Hover over the status bar item to see the model, mode, or error message.
+- Open **Output → llama.cpp Inline** for error codes and HTTP status. Request bodies are not logged.
+- If an instruct model performs poorly with FIM, select `chat` mode or use a FIM-compatible coding model.
+- Use **llama.cpp: Toggle Code Completion** to pause or resume suggestions.
 
-## Datos y alcance
+## Data handling and scope
 
-No hay telemetría ni fallback a un proveedor cloud. La extensión envía contexto al **endpoint que configures**; con el valor por defecto, permanece en el servidor de tu Mac. Si apuntas a otro equipo, ese equipo recibirá el fragmento de código.
+The extension has no telemetry or cloud fallback. It sends context to **the endpoint you configure**. With the default URL, code stays on your local server. If you configure another machine, that machine receives the code fragment.
 
-No recorre el proyecto ni lee otros archivos para formar el contexto. No utiliza claves de ChatGPT ni modifica la configuración o las conversaciones de Codex. No escribe código en el archivo hasta que aceptas la sugerencia. No sigue redirecciones HTTP, para evitar que una clave o el código se reenvíen a otro destino.
+It does not scan the repository or read other files to assemble context. It does not use ChatGPT credentials or modify Codex configuration or conversations. Generated code is inserted only when you accept a suggestion. HTTP redirects are rejected so code and credentials are not forwarded to a different destination.
 
-Los workspaces no confiables y archivos como `.env`, claves privadas y `auth.json` no reciben sugerencias. Esto reduce exposiciones accidentales; cualquier archivo de código puede contener información sensible y el usuario decide qué servidor utiliza.
+Untrusted workspaces and files such as `.env`, private keys, and `auth.json` do not receive suggestions. This reduces accidental exposure, but any code file can contain sensitive information; choose your server accordingly.
 
-## Desarrollo y pruebas
+## Development and tests
 
-Requiere Node.js compatible con las herramientas de empaquetado:
+Use a Node.js version supported by the packaging tools:
 
 ```bash
 npm ci --ignore-scripts
@@ -104,14 +107,16 @@ npm run test:editor
 npm run package
 ```
 
-`npm test` usa servidores HTTP simulados y prueba cancelación, errores, redirecciones, contexto limitado y respuestas atrasadas. `test:editor` abre una instancia aislada de VS Code con un perfil temporal, registra el proveedor y acepta una sugerencia en el editor real. En macOS intenta usar la aplicación instalada; puedes señalar otro ejecutable mediante `VSCODE_EXECUTABLE_PATH`.
+The generated VSIX is written one directory above `vscode-extension/`, at the repository root.
 
-La prueba opcional contra un modelo real requiere `LLAMA_INLINE_REAL_SERVER=1` y `LLAMA_INLINE_TEST_MODEL` con el ID de un modelo local FIM. Solo envía un ejemplo sintético de suma.
+`npm test` uses simulated HTTP servers to check cancellation, errors, redirects, bounded context, and stale responses. `test:editor` opens an isolated VS Code profile, registers the provider, and accepts a suggestion in the real editor. On macOS it attempts to use the installed application; set `VSCODE_EXECUTABLE_PATH` for another executable.
 
-Esta versión se distribuye como VSIX local. No requiere publicarse en el Marketplace. Licencia MIT.
+Optional real-model testing requires `LLAMA_INLINE_REAL_SERVER=1` and `LLAMA_INLINE_TEST_MODEL` set to a local FIM model identifier. It sends only a synthetic addition example.
 
-## Referencias
+This extension is distributed as a local VSIX and does not require Marketplace publication. MIT license.
 
-- [API de sugerencias en línea de VS Code](https://code.visualstudio.com/api/language-extensions/programmatic-language-features#show-inline-completions)
-- [Servidor y API /infill de llama.cpp](https://github.com/ggml-org/llama.cpp/tree/master/tools/server)
-- [Empaquetado VSIX](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#packaging-extensions)
+## References
+
+- [VS Code inline completion API](https://code.visualstudio.com/api/language-extensions/programmatic-language-features#show-inline-completions)
+- [llama.cpp server and /infill API](https://github.com/ggml-org/llama.cpp/tree/master/tools/server)
+- [VSIX packaging](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#packaging-extensions)

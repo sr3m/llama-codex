@@ -1,33 +1,43 @@
 # llama-codex
 
-Un solo script de Python para usar modelos de OpenAI y llama.cpp en Codex, con un menú de Terminal y un proveedor unificado para el selector de modelos.
+Use OpenAI cloud models and local llama.cpp models in Codex through a single Python script, an interactive terminal menu, and a unified model provider. This repository also includes **llama.cpp Inline**, a VS Code extension for local code completion.
 
-**Proyecto comunitario y experimental.** No está afiliado con OpenAI ni con llama.cpp. La integración del catálogo y del escritorio depende de la versión instalada de Codex. El script comprueba el catálogo con el lector de tu propia instalación antes de activarlo; una actualización de Codex puede requerir adaptar el script.
+**Community project; experimental integration.** This project is independent of OpenAI and llama.cpp. Desktop integration and model catalog support depend on the installed Codex version. The script validates the catalog with your installed CLI before activation; a Codex update may require changes to the integration.
 
-## Qué hace
+## What is included
 
-- Menú interactivo para elegir modelos, actualizar el catálogo y gestionar el servidor local.
-- Enrutador HTTP en `127.0.0.1:9932` que mantiene un único proveedor, `codex-unified`.
-- Modelos locales descubiertos en llama.cpp (`127.0.0.1:9931/v1/models`) y en perfiles `llama-*.config.toml`.
-- Catálogo combinado que el enrutador actualiza cada 10 segundos. La interfaz de Codex controla cuándo vuelve a consultarlo.
-- Tras activar el proveedor y reabrir Codex una vez, permite elegir modelos locales y de OpenAI desde el selector del mismo chat, sin reiniciar por cada cambio.
-- Copias de seguridad de la configuración y SQLite antes de migrar los chats existentes. La migración unificada cambia el proveedor del índice y del encabezado del historial; conserva los modelos de cada chat y los mensajes.
-- Adaptación de mensajes y notificaciones de herramientas de Desktop al formato Responses de llama.cpp.
+- **Codex switch and gateway:** `llama-codex.py` combines local and cloud models under one provider.
+- **VS Code inline completion:** [`vscode-extension/`](vscode-extension/README.md) sends code around the cursor directly to llama.cpp and displays suggestions you accept with Tab.
+- **Development workspace:** `llama-codex.code-workspace`, with test tasks and an extension debugging configuration.
+- **Architecture guide:** [How it works](docs/how-it-works.md).
+- **Contributor guide:** [Local development](docs/development.md).
 
-La continuidad conserva el historial visible que Codex reenvía. Cada modelo tiene su límite de contexto, capacidad de herramientas y calidad de respuesta; no se transfiere estado interno, caché KV ni razonamiento cifrado de otro servicio.
+The script and extension can share the same llama.cpp server. They work independently: the extension does not require Codex or the unified gateway.
 
-## Requisitos
+## Codex features
 
-- macOS para el servicio automático mediante LaunchAgent.
-- **Python 3.14 recomendado para Desktop:** incluye el descompresor `zstd` usado por algunas solicitudes. Python 3.11–3.13 permite ejecutar el menú y las pruebas, pero no acepta solicitudes comprimidas con zstd.
-- Codex con sesión iniciada en ChatGPT y una CLI instalada que admita `debug models --bundled` y `debug models`. El script busca la CLI en las apps instaladas y en `PATH`; puedes indicar una ruta con `CODEX_CLI_BIN`.
-- Para modelos locales, una versión de llama.cpp con `/v1/responses`, servida en `127.0.0.1:9931`. No basta con que ofrezca `/v1/chat/completions`.
+- Interactive menu for model selection, catalog updates, and local server management.
+- HTTP gateway on `127.0.0.1:9932`, using a stable provider named `codex-unified`.
+- Local model discovery through llama.cpp at `127.0.0.1:9931/v1/models` and `llama-*.config.toml` profiles.
+- Combined model catalog refreshed by the gateway every 10 seconds. Codex controls when its interface fetches the catalog again.
+- After initial activation and one Codex restart, local and cloud models can be selected in the same chat without restarting for each model change.
+- Configuration and SQLite backups before migrating existing chats. Unified migration updates provider metadata in the index and session header while preserving messages and per-chat models.
+- Compatibility handling for Desktop tool notifications and other Responses API input shapes used with llama.cpp.
 
-La ruta cloud usa la sesión que Codex entrega al proveedor y el servicio de Codex de ChatGPT. Esta versión no implementa autenticación mediante una API key de OpenAI ni un proveedor cloud alternativo.
+Conversation continuity uses the visible history that Codex replays. Each model retains its context limit, tool capabilities, and response quality. Model internals, KV caches, and another provider's encrypted reasoning are not transferred.
 
-## Instalación
+## Codex requirements
 
-Clona el repositorio y revisa el script antes de instalarlo:
+- macOS for the automatic LaunchAgent service.
+- **Python 3.14 recommended for Desktop:** it includes the `zstd` decoder used by some requests. Python 3.11–3.13 can run the menu and tests, but cannot decode zstd-compressed requests.
+- Codex signed in with ChatGPT, plus an installed CLI supporting `debug models --bundled` and `debug models`. The script searches installed apps and `PATH`; set `CODEX_CLI_BIN` to provide an explicit executable.
+- For local models, llama.cpp with `/v1/responses`, listening on `127.0.0.1:9931`. A server offering only `/v1/chat/completions` is insufficient for the Codex gateway.
+
+The cloud route uses the ChatGPT session supplied by Codex and the ChatGPT Codex service. This implementation does not provide OpenAI API-key authentication or alternative cloud providers.
+
+## Install the Codex script
+
+Clone the repository and review the script before installing:
 
 ```bash
 git clone https://github.com/sr3m/llama-codex.git
@@ -36,116 +46,119 @@ python3 llama-codex.py --help
 python3 llama-codex.py install
 ```
 
-`install` copia únicamente el script a `~/.codex/llama-codex.py`, respalda una copia anterior y crea un `config.toml` vacío solo si no existe. No migra conversaciones. Respeta `CODEX_HOME` si usas otro directorio.
+`install` copies only the script to `~/.codex/llama-codex.py`, backs up an existing copy, and creates an empty `config.toml` only when it is missing. It does not migrate chats. It respects `CODEX_HOME` if you use another directory.
 
-Inicia llama.cpp con tus modelos y el puerto indicado. Si utilizas el ejecutable `llama` con subcomando `serve`, el menú puede iniciarlo automáticamente. También acepta un preset opcional en `~/.codex/llamacpp-codex.ini`. Con `llama-server`, inicia el servidor manualmente con tus argumentos de modelo habituales y `--host 127.0.0.1 --port 9931`.
+Start llama.cpp with your models on the expected port. If you use the `llama` executable with its `serve` subcommand, the menu can start it automatically. An optional preset can be placed at `~/.codex/llamacpp-codex.ini`. With `llama-server`, start the server manually using your usual model arguments and `--host 127.0.0.1 --port 9931`.
 
-## Activar el selector combinado
+## Enable the combined model picker
 
-Termina los turnos en curso y cierra Codex para completar la migración inicial de todos los chats:
+Finish active turns and close Codex so that all existing chats can complete their initial migration:
 
 ```bash
 python3 ~/.codex/llama-codex.py unified
 ```
 
-Después abre Codex. Elige los modelos desde su selector: los locales llevan el sufijo `· Local`. **No hace falta reiniciar la app por cada cambio de modelo.** La primera activación sí requiere reabrirla. Si había chats bloqueados por una instancia de Codex, el script los deja pendientes; cierra esa instancia y repite `unified`.
+Reopen Codex. Choose models in its model picker; local entries have a `· Local` suffix. **You do not need to restart the app for each model change.** Initial activation requires one restart. If a Codex instance holds a chat's writer lock, the script leaves that chat pending; close the instance and run `unified` again.
 
-El gateway queda registrado como LaunchAgent del usuario y se inicia al entrar en macOS. Si no hay servidor ni perfiles locales, puedes activar solo el catálogo cloud y añadir los modelos locales después.
+The gateway is registered as a user LaunchAgent and starts at macOS login. You can activate a cloud-only catalog while the local server and profiles are unavailable, then add local models later.
 
-## Uso cotidiano
+## Everyday use
 
 ```bash
-# Menú interactivo
+# Interactive menu
 python3 ~/.codex/llama-codex.py
 
-# Actualizar y validar el catálogo combinado
+# Refresh and validate the combined catalog
 python3 ~/.codex/llama-codex.py hybrid-catalog
 
-# Ver estado sin mostrar claves
+# Show gateway status without revealing keys
 python3 ~/.codex/llama-codex.py hybrid-status
 
-# Cambiar el modelo predeterminado para sesiones futuras
-python3 ~/.codex/llama-codex.py local --model 'ID-DEL-MODELO-LOCAL'
-python3 ~/.codex/llama-codex.py cloud --model 'ID-DEL-MODELO-CLOUD'
+# Change the default model for future sessions
+python3 ~/.codex/llama-codex.py local --model 'LOCAL-MODEL-ID'
+python3 ~/.codex/llama-codex.py cloud --model 'CLOUD-MODEL-ID'
 
-# CLI: usar el mismo proveedor configurado con un modelo explícito
-codex -m 'ID-DEL-MODELO'
+# CLI: use the configured provider with an explicit model
+codex -m 'MODEL-ID'
 ```
 
-En un chat abierto, cambia el modelo en el selector de Codex; cambiar el predeterminado por Terminal no obliga a ese chat a cambiar de modelo.
+For an open chat, select its model in Codex. Changing the default from the terminal does not force an existing chat to change models.
 
-Al encender llama.cpp, el gateway consulta los modelos cada 10 segundos. Para forzar una actualización, usa `hybrid-catalog` y abre de nuevo el selector. Codex puede mantener una caché propia del listado; el script no fuerza una actualización de la interfaz de la app.
+After starting llama.cpp, the gateway discovers models every 10 seconds. To force a refresh, run `hybrid-catalog` and reopen the picker. Codex may cache its model list; the script does not force the app's interface to refresh.
 
-También puedes declarar modelos sin mantener el servidor encendido. Ejemplo de `~/.codex/llama-mi-modelo.config.toml`:
+Models can also be declared while the server is offline. Example `~/.codex/llama-my-model.config.toml`:
 
 ```toml
 model_provider = "llamacpp"
-model = "mi-modelo"
+model = "my-model"
 model_context_window = 32768
 ```
 
-Usa el identificador exacto que expone llama.cpp y un contexto que tu servidor y modelo puedan atender. Los perfiles anuncian modelos; no descargan ni cargan sus pesos por sí solos.
+Use the exact model identifier exposed by llama.cpp and a context limit supported by both the model and server. Profiles advertise models; they do not download or load model weights themselves.
 
-## Configuración y privacidad
+## VS Code code completion
 
-El repositorio contiene solo código, pruebas sintéticas y documentación. Durante el uso, todos los datos de funcionamiento se crean fuera del repositorio, en `CODEX_HOME` (por defecto `~/.codex`):
+See the [extension README](vscode-extension/README.md) for model selection, settings, and troubleshooting. To build an installable VSIX from this repository:
 
-| Archivo | Uso |
+```bash
+npm --prefix vscode-extension ci --ignore-scripts
+npm --prefix vscode-extension run package
+```
+
+Install the generated `llama-cpp-inline-0.1.1.vsix` from **Extensions → … → Install from VSIX…**. Open a trusted project and run **llama.cpp: Select Model** from the Command Palette. Suggestions appear inline; accept them with **Tab** or dismiss them with **Esc**.
+
+## Configuration and privacy
+
+The repository contains source code, synthetic tests, and documentation. Runtime data is stored outside the repository in `CODEX_HOME`, which defaults to `~/.codex`:
+
+| File | Purpose |
 | --- | --- |
-| `config.toml` | Proveedor, modelo predeterminado y clave privada del gateway |
-| `unified/settings.json` | Clave aleatoria del gateway y estado de activación |
-| `unified/catalog.json` | Catálogo combinado y rutas por modelo |
-| `unified/cloud-models.json` | Catálogo cloud obtenido en tu instalación |
-| `unified/routes.jsonl` | Estado HTTP, ruta local/cloud, modelo, tiempos y tipos de herramientas |
-| `backups/` | Respaldos locales de configuración, SQLite e historiales modificados |
+| `config.toml` | Provider, default model, and private gateway key |
+| `unified/settings.json` | Random gateway key and activation state |
+| `unified/catalog.json` | Combined model catalog and per-model routes |
+| `unified/cloud-models.json` | Cloud catalog obtained by your installation |
+| `unified/routes.jsonl` | HTTP status, local/cloud route, model, timing, and tool types |
+| `backups/` | Local configuration, SQLite, and modified-history backups |
 
-El gateway escucha solo en loopback, exige una clave para acceder a los modelos y rechaza solicitudes con cabecera `Origin`. Envía las credenciales de ChatGPT únicamente al upstream cloud fijo; no las envía a llama.cpp. No lee `auth.json`. No registra prompts, respuestas, tokens de autenticación ni cabeceras. El registro sí contiene identificadores de modelos; trátalo como información local.
+The gateway listens on loopback, requires a key for model access, and rejects requests with an `Origin` header. ChatGPT credentials are forwarded only to the fixed cloud upstream, never to llama.cpp. The gateway does not read `auth.json`. It does not log prompts, generated responses, authentication tokens, or headers. Logs do contain model identifiers; treat them as local information.
 
-No hay cambio automático entre local y cloud si falla un servicio. Elegir cloud envía a OpenAI el contexto de conversación que Codex incluya en la solicitud, aunque parte de ese chat se haya producido con un modelo local.
+There is no automatic fallback between local and cloud services. Selecting a cloud model sends the conversation context included by Codex to OpenAI, even if some messages were generated locally.
 
-No subas tu directorio `.codex`, configuraciones, catálogos generados, bases de datos, respaldos ni logs a GitHub. El `.gitignore` incluido reduce errores comunes; no sustituye una revisión de lo que publicas. El proyecto no incluye direcciones de redes privadas ni requiere Tailscale.
+Do not publish your `.codex` directory, personal configurations, generated catalogs, databases, backups, or logs. The included `.gitignore` reduces common mistakes, but does not replace reviewing what you commit. The project does not include private network addresses or require Tailscale.
 
-## Volver al acceso directo a OpenAI
+## Restore direct OpenAI access
 
 ```bash
 python3 ~/.codex/llama-codex.py restore
 ```
 
-Este comando migra los chats elegibles al proveedor directo de OpenAI y cambia la configuración, sin reemplazar SQLite por una copia antigua. Reabre Codex para aplicarlo. Conserva los respaldos y deja el servicio instalado por si vuelves a activarlo. Para descargarlo de launchd:
+This migrates eligible chats to the direct OpenAI provider and updates the configuration without replacing SQLite with an older snapshot. Reopen Codex to apply the change. Backups and the background service are retained for future activation. To unload the service:
 
 ```bash
 launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/io.github.switch-codex.gateway.plist"
 ```
 
-Después puedes eliminar ese archivo `.plist` para que no se inicie en el próximo inicio de sesión. No elimines tus historiales ni tu base de datos.
+You can then remove that `.plist` to prevent startup at the next login. Keep your histories and database.
 
-## Modo directo anterior
+## Legacy direct-provider mode
 
-Se conservan los comandos `local`, `cloud`, `catalog`, `watch`, `start`, `stop` y `status`. Si el proveedor activo no es `codex-unified`, `local`/`cloud` realizan el switch anterior, que sincroniza proveedor y modelo en los chats y requiere reabrir Desktop. Para ese modo, el proveedor `llamacpp` debe estar definido con `base_url = "http://127.0.0.1:9931/v1"` y `wire_api = "responses"`; para cloud, indica `--model` o crea `openai-cloud.config.toml`.
+The commands `local`, `cloud`, `catalog`, `watch`, `start`, `stop`, and `status` remain available. When the active provider is not `codex-unified`, `local` and `cloud` perform the earlier switch, synchronizing provider/model metadata across eligible chats and requiring a Desktop restart. In that mode, define `llamacpp` with `base_url = "http://127.0.0.1:9931/v1"` and `wire_api = "responses"`. For cloud selection, provide `--model` or create `openai-cloud.config.toml`.
 
-Para alternar en el selector sin reinicios, activa `unified` primero.
+Enable `unified` first to switch models in the picker without restarting for each change.
 
-## Pruebas
+## Tests and development
 
 ```bash
 python3 tests/run.py
+npm --prefix vscode-extension test
 ```
 
-Las pruebas usan directorios temporales, una base SQLite sintética y servidores HTTP simulados en loopback. No leen tu autenticación, no cambian tus conversaciones y no envían solicitudes a OpenAI ni a un modelo real. Comprueban el límite de credenciales, transmisión SSE, errores upstream, normalización de mensajes, rollback y conservación de datos de los chats.
+The Python tests use temporary directories, a synthetic SQLite database, and simulated loopback HTTP servers. They do not read your authentication, modify your chats, or send requests to OpenAI or a real model. They check credential isolation, SSE forwarding, upstream errors, message normalization, rollback, and preservation of chat data.
 
-La compatibilidad real depende de las versiones de Codex, llama.cpp y del modelo. Si informas un error, incluye las versiones y un ejemplo sintético. Retira IPs, nombres de host, rutas personales y credenciales de cualquier archivo o captura.
+Open `llama-codex.code-workspace` for test tasks and extension debugging with F5. See [Local development](docs/development.md) for editor integration tests and packaging. Optional `dist/` and `local-archive/` directories in a local working copy contain generated packages or session records and are ignored by Git.
 
-## Licencia
+Compatibility depends on Codex, llama.cpp, and the selected model. Include versions and a synthetic example in bug reports. Remove IP addresses, hostnames, personal paths, and credentials from attachments and screenshots.
 
-MIT. Consulta [LICENSE](LICENSE).
+## License
 
-## Proyecto local y extensión de VS Code
-
-Abre `llama-codex.code-workspace` para trabajar con el script y la extensión. La extensión está en `vscode-extension/`; consulta su README para instalarla y configurarla. El instalador entregado está en `dist/llama-cpp-inline-0.1.0.vsix`.
-
-- `docs/Como-funciona-llama-codex.md`: explicación del enrutador, catálogo, contexto y extensión.
-- `docs/Desarrollo-local.md`: estructura, pruebas, tareas y depuración con F5.
-- `.vscode/`: tareas de desarrollo y lanzamiento de la extensión.
-- `local-archive/`: copia local de los entregables y diagnósticos de la sesión, excluida de Git.
-
-La extensión completa código directamente con llama.cpp. El script de Codex y la extensión comparten el servidor, pero tienen integraciones independientes.
+MIT. See [LICENSE](LICENSE).

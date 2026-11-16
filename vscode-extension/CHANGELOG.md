@@ -1,7 +1,12 @@
-# Cambios
+# Changelog
+
+## 0.1.1
+
+- Translate all extension commands, settings, notifications, and documentation into English.
+- Use English identifiers in the synthetic editor test examples.
 
 ## 0.1.0
 
-- Autocompletado inline con /infill y alternativa chat para modelos instruct.
-- Selección de modelos, configuración del servidor y clave en SecretStorage.
-- Cancelación, debounce, caché en memoria y control de respuestas obsoletas.
+- Inline code completion through /infill, with chat fallback for instruct models.
+- Model selection, server configuration, and API key storage in SecretStorage.
+- Cancellation, debounce, in-memory caching, and stale-response protection.
