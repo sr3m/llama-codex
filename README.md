@@ -138,3 +138,14 @@ La compatibilidad real depende de las versiones de Codex, llama.cpp y del modelo
 ## Licencia
 
 MIT. Consulta [LICENSE](LICENSE).
+
+## Proyecto local y extensión de VS Code
+
+Abre `llama-codex.code-workspace` para trabajar con el script y la extensión. La extensión está en `vscode-extension/`; consulta su README para instalarla y configurarla. El instalador entregado está en `dist/llama-cpp-inline-0.1.0.vsix`.
+
+- `docs/Como-funciona-llama-codex.md`: explicación del enrutador, catálogo, contexto y extensión.
+- `docs/Desarrollo-local.md`: estructura, pruebas, tareas y depuración con F5.
+- `.vscode/`: tareas de desarrollo y lanzamiento de la extensión.
+- `local-archive/`: copia local de los entregables y diagnósticos de la sesión, excluida de Git.
+
+La extensión completa código directamente con llama.cpp. El script de Codex y la extensión comparten el servidor, pero tienen integraciones independientes.

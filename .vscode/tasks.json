@@ -1,0 +1,73 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Codex: pruebas del switch",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tests/run.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Extensión: instalar dependencias de desarrollo",
+      "type": "process",
+      "command": "npm",
+      "args": [
+        "ci",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-extension"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Extensión: pruebas unitarias",
+      "type": "process",
+      "command": "npm",
+      "args": [
+        "test"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-extension"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Extensión: prueba en VS Code aislado",
+      "type": "process",
+      "command": "npm",
+      "args": [
+        "run",
+        "test:editor"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-extension"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Extensión: generar VSIX",
+      "type": "process",
+      "command": "npm",
+      "args": [
+        "run",
+        "package"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-extension"
+      },
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

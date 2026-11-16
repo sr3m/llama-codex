@@ -1,0 +1,24 @@
+{
+  "folders": [
+    {
+      "name": "llama-codex",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/node_modules": true,
+      "local-archive": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "local-archive/**": true,
+      "dist/**": true
+    },
+    "files.watcherExclude": {
+      "**/node_modules/**": true,
+      "**/local-archive/**": true
+    },
+    "editor.inlineSuggest.enabled": true
+  }
+}

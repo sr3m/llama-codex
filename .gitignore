@@ -24,3 +24,12 @@ catalog.json
 auth.json
 settings.json
 provider_switch_state.json
+
+# Local development and session archive
+local-archive/
+**/node_modules/
+**/.vscode-test/
+*.vsix
+dist/*.zip
+dist/*verification.json
+/llama-cpp-inline-*.vsix
