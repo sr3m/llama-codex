@@ -376,7 +376,7 @@ def select_options(mode, config, state, requested=None):
         available = {m['slug']: m for m in models}
         model = requested or state['selection'].get('local', {}).get('model') or models[0]['slug']
         if model not in available:
-            raise ValueError(f'Modelo local ausente del catálogo: {model}. Ejecuta switch-codex.py catalog.')
+            raise ValueError(f'Modelo local ausente del catálogo: {model}. Ejecuta llama-codex.py catalog.')
         return {'model_provider': 'llamacpp', 'model': model,
                 'model_catalog_json': str(CATALOG), 'model_reasoning_effort': 'none',
                 'web_search': 'disabled'}
@@ -779,7 +779,7 @@ def menu():
             print(f'Error: {error}', file=sys.stderr)
 
 
-# Unified gateway: this section is embedded in switch-codex.py at installation.
+# Unified gateway: this section is embedded in llama-codex.py at installation.
 import collections
 import datetime
 import gzip
@@ -1392,7 +1392,7 @@ def unified_activate():
             con.close();locks.close()
         print(f'Proveedor unificado activado. {changed} entradas sincronizadas; modelos e historial conservados.')
         print('Respaldo:',backup)
-        if skipped:print(f'Pendientes: {len(skipped)} chats abiertos. Cierra Codex y ejecuta de nuevo: python3 ~/.codex/switch-codex.py unified')
+        if skipped:print(f'Pendientes: {len(skipped)} chats abiertos. Cierra Codex y ejecuta de nuevo: python3 ~/.codex/llama-codex.py unified')
         if missing:print(f'Se conservaron {missing} entradas con archivos de historial previamente ausentes.')
         print('Tras esta activación, vuelve a abrir Codex una vez. Después cambia local/OpenAI desde el selector.')
 
@@ -1466,7 +1466,7 @@ def update(offline=False, quiet=False):
 
 def install_script():
     CODEX_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    destination = CODEX_DIR / 'switch-codex.py'
+    destination = CODEX_DIR / 'llama-codex.py'
     source = Path(__file__).resolve()
     if destination.resolve() != source:
         if destination.exists():
@@ -1506,7 +1506,7 @@ def main():
         install_script()
         return 0
     if not CONFIG.exists():
-        raise RuntimeError('Primero ejecuta switch-codex.py install o inicia Codex para crear config.toml.')
+        raise RuntimeError('Primero ejecuta llama-codex.py install o inicia Codex para crear config.toml.')
     if args.command == 'gateway-serve':
         unified_serve()
         return 0

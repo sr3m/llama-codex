@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 from unittest.mock import patch
 
-spec=importlib.util.spec_from_file_location('gateway',Path(__file__).resolve().parents[1]/'switch-codex.py')
+spec=importlib.util.spec_from_file_location('gateway',Path(__file__).resolve().parents[1]/'llama-codex.py')
 g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
 
 with tempfile.TemporaryDirectory(prefix='migration-tests-') as name:

@@ -6,7 +6,7 @@ import threading
 import urllib.request
 import urllib.error
 
-spec=importlib.util.spec_from_file_location('gateway',Path(__file__).resolve().parents[1]/'switch-codex.py')
+spec=importlib.util.spec_from_file_location('gateway',Path(__file__).resolve().parents[1]/'llama-codex.py')
 g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
 tool={'type':'function','name':'probe','description':'Test probe','parameters':{'type':'object','properties':{}}}
 notice={'type':'function_call_output','id':'notice-test','namespace':'codex_app',

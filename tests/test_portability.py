@@ -7,7 +7,7 @@ import sys
 import tempfile
 from unittest.mock import patch
 
-SOURCE = Path(__file__).resolve().parents[1] / 'switch-codex.py'
+SOURCE = Path(__file__).resolve().parents[1] / 'llama-codex.py'
 
 with tempfile.TemporaryDirectory(prefix='switch-codex-portable-') as name:
     home = Path(name)
@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='switch-codex-portable-') as name:
     subprocess.run([sys.executable, str(SOURCE), '--help'], env=env, check=True, capture_output=True)
     assert not (home / 'runtime').exists(), 'Help must have no runtime side effects'
     subprocess.run([sys.executable, str(SOURCE), 'install'], env=env, check=True, capture_output=True)
-    installed = home / 'runtime' / 'switch-codex.py'
+    installed = home / 'runtime' / 'llama-codex.py'
     assert installed.read_bytes() == SOURCE.read_bytes()
     config = installed.parent / 'config.toml'
     config.write_text('# Keep my configuration\n[desktop]\nkeep = true\n')

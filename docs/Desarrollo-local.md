@@ -6,7 +6,7 @@ Abre `llama-codex.code-workspace` en VS Code. Contiene el proyecto completo y aj
 
 ```text
 llama-codex.code-workspace
-switch-codex.py           # Script portable de Codex
+llama-codex.py           # Script portable de Codex
 tests/                    # Pruebas del switch y gateway
 vscode-extension/         # Código fuente y pruebas de llama.cpp Inline
 docs/                     # Guías del proyecto
@@ -21,7 +21,7 @@ local-archive/            # Entregables y trabajo original; ignorado por Git
 python3 tests/run.py
 ```
 
-Para gestionar tu instalación activa, sigue usando `python3 ~/.codex/switch-codex.py`. El código del proyecto es una copia de desarrollo; guardarlo aquí no cambia el servicio instalado en la Mac.
+Para gestionar tu instalación activa, sigue usando `python3 ~/.codex/llama-codex.py`. El código del proyecto es una copia de desarrollo; guardarlo aquí no cambia el servicio instalado en la Mac.
 
 ## Probar la extensión
 

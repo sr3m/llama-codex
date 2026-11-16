@@ -32,11 +32,11 @@ Clona el repositorio y revisa el script antes de instalarlo:
 ```bash
 git clone https://github.com/sr3m/llama-codex.git
 cd llama-codex
-python3 switch-codex.py --help
-python3 switch-codex.py install
+python3 llama-codex.py --help
+python3 llama-codex.py install
 ```
 
-`install` copia únicamente el script a `~/.codex/switch-codex.py`, respalda una copia anterior y crea un `config.toml` vacío solo si no existe. No migra conversaciones. Respeta `CODEX_HOME` si usas otro directorio.
+`install` copia únicamente el script a `~/.codex/llama-codex.py`, respalda una copia anterior y crea un `config.toml` vacío solo si no existe. No migra conversaciones. Respeta `CODEX_HOME` si usas otro directorio.
 
 Inicia llama.cpp con tus modelos y el puerto indicado. Si utilizas el ejecutable `llama` con subcomando `serve`, el menú puede iniciarlo automáticamente. También acepta un preset opcional en `~/.codex/llamacpp-codex.ini`. Con `llama-server`, inicia el servidor manualmente con tus argumentos de modelo habituales y `--host 127.0.0.1 --port 9931`.
 
@@ -45,7 +45,7 @@ Inicia llama.cpp con tus modelos y el puerto indicado. Si utilizas el ejecutable
 Termina los turnos en curso y cierra Codex para completar la migración inicial de todos los chats:
 
 ```bash
-python3 ~/.codex/switch-codex.py unified
+python3 ~/.codex/llama-codex.py unified
 ```
 
 Después abre Codex. Elige los modelos desde su selector: los locales llevan el sufijo `· Local`. **No hace falta reiniciar la app por cada cambio de modelo.** La primera activación sí requiere reabrirla. Si había chats bloqueados por una instancia de Codex, el script los deja pendientes; cierra esa instancia y repite `unified`.
@@ -56,17 +56,17 @@ El gateway queda registrado como LaunchAgent del usuario y se inicia al entrar e
 
 ```bash
 # Menú interactivo
-python3 ~/.codex/switch-codex.py
+python3 ~/.codex/llama-codex.py
 
 # Actualizar y validar el catálogo combinado
-python3 ~/.codex/switch-codex.py hybrid-catalog
+python3 ~/.codex/llama-codex.py hybrid-catalog
 
 # Ver estado sin mostrar claves
-python3 ~/.codex/switch-codex.py hybrid-status
+python3 ~/.codex/llama-codex.py hybrid-status
 
 # Cambiar el modelo predeterminado para sesiones futuras
-python3 ~/.codex/switch-codex.py local --model 'ID-DEL-MODELO-LOCAL'
-python3 ~/.codex/switch-codex.py cloud --model 'ID-DEL-MODELO-CLOUD'
+python3 ~/.codex/llama-codex.py local --model 'ID-DEL-MODELO-LOCAL'
+python3 ~/.codex/llama-codex.py cloud --model 'ID-DEL-MODELO-CLOUD'
 
 # CLI: usar el mismo proveedor configurado con un modelo explícito
 codex -m 'ID-DEL-MODELO'
@@ -108,7 +108,7 @@ No subas tu directorio `.codex`, configuraciones, catálogos generados, bases de
 ## Volver al acceso directo a OpenAI
 
 ```bash
-python3 ~/.codex/switch-codex.py restore
+python3 ~/.codex/llama-codex.py restore
 ```
 
 Este comando migra los chats elegibles al proveedor directo de OpenAI y cambia la configuración, sin reemplazar SQLite por una copia antigua. Reabre Codex para aplicarlo. Conserva los respaldos y deja el servicio instalado por si vuelves a activarlo. Para descargarlo de launchd:
