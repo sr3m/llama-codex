@@ -1,4 +1,4 @@
-# switch-codex
+# llama-codex
 
 Un solo script de Python para usar modelos de OpenAI y llama.cpp en Codex, con un menú de Terminal y un proveedor unificado para el selector de modelos.
 
@@ -30,8 +30,8 @@ La ruta cloud usa la sesión que Codex entrega al proveedor y el servicio de Cod
 Clona el repositorio y revisa el script antes de instalarlo:
 
 ```bash
-git clone https://github.com/sr3m/switch-codex.git
-cd switch-codex
+git clone https://github.com/sr3m/llama-codex.git
+cd llama-codex
 python3 switch-codex.py --help
 python3 switch-codex.py install
 ```
