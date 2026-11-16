@@ -1237,9 +1237,9 @@ def unified_request(path='/health'):
 
 def unified_start():
     unified_prepare()
+    healthy = False
     try:
-        if unified_request()['service'] == 'codex-unified':
-            return
+        healthy = unified_request()['service'] == 'codex-unified'
     except (OSError, ValueError, KeyError):
         pass
     if sys.platform != 'darwin':
@@ -1249,25 +1249,113 @@ def unified_start():
         raise RuntimeError('Could not find Python 3.')
     logs = CODEX_DIR / 'logs'
     logs.mkdir(exist_ok=True)
+    installed = CODEX_DIR / 'llama-codex.py'
+    script = installed if installed.is_file() else Path(__file__).resolve()
     definition = {'Label': UNIFIED_LABEL,
-                  'ProgramArguments': [executable, str(Path(__file__).resolve()), 'gateway-serve'],
+                  'ProgramArguments': [executable, str(script), 'gateway-serve'],
                   'RunAtLoad': True, 'KeepAlive': True, 'ThrottleInterval': 10,
                   'WorkingDirectory': str(CODEX_DIR),
                   'EnvironmentVariables': {'CODEX_HOME': str(CODEX_DIR),
+                    'LLAMA_CODEX_REVISION': hashlib.sha256(script.read_bytes()).hexdigest(),
                     **({'LLAMA_CPP_BIN': str(LLAMA)} if LLAMA.is_file() else {})},
                   'StandardOutPath': str(logs/'unified-gateway.log'),
                   'StandardErrorPath': str(logs/'unified-gateway.error.log')}
-    UNIFIED_AGENT.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(UNIFIED_AGENT, plistlib.dumps(definition))
     domain = 'gui/' + str(os.getuid())
-    result = subprocess.run(['launchctl', 'bootstrap', domain, str(UNIFIED_AGENT)], capture_output=True)
-    if result.returncode:
-        subprocess.run(['launchctl', 'kickstart', domain + '/' + UNIFIED_LABEL], check=True, capture_output=True)
+    with locked():
+        agents = unified_managed_agents()
+        if UNIFIED_AGENT.exists() and UNIFIED_AGENT not in {path for path, _ in agents}:
+            raise RuntimeError('The gateway LaunchAgent path contains an unrecognized job; it was left untouched.')
+        if healthy and len(agents) == 1 and agents[0][1] == definition:
+            return
+        if healthy or agents:
+            # Do not interrupt a response while replacing an old service. Fail
+            # closed if the connection check itself cannot be performed.
+            result = subprocess.run(['/usr/sbin/lsof', '-nP', '-iTCP:' + str(UNIFIED_PORT),
+                                     '-sTCP:ESTABLISHED', '-t'], capture_output=True, text=True, timeout=5)
+            if result.returncode not in (0, 1):
+                raise RuntimeError('Cannot check gateway connections; service upgrade postponed.')
+            if result.stdout.strip():
+                raise RuntimeError('Gateway is in use. Finish active turns and retry installation; no service was stopped.')
+            if healthy and not agents:
+                raise RuntimeError('A gateway is running without a recognized LaunchAgent; it was left untouched.')
+        snapshot = CODEX_DIR / 'backups' / ('gateway-upgrade-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+        snapshot.mkdir(parents=True, mode=0o700)
+        previous = []
+        loaded = []
+        for path, old in agents:
+            raw = path.read_bytes()
+            previous.append((path, raw, old['Label']))
+            atomic_write(snapshot / path.name, raw)
+            if subprocess.run(['launchctl', 'print', domain + '/' + old['Label']], capture_output=True).returncode == 0:
+                loaded.append((path, old['Label']))
+        new_started = False
+        try:
+            for path, label in loaded:
+                subprocess.run(['launchctl', 'bootout', domain + '/' + label], check=True, capture_output=True)
+            for path, _, _ in previous:
+                path.unlink()
+            UNIFIED_AGENT.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(UNIFIED_AGENT, plistlib.dumps(definition))
+            new_started = True
+            unified_bootstrap(domain, UNIFIED_AGENT)
+            unified_wait_ready()
+        except BaseException:
+            if new_started:
+                subprocess.run(['launchctl', 'bootout', domain + '/' + UNIFIED_LABEL], capture_output=True)
+            UNIFIED_AGENT.unlink(missing_ok=True)
+            for path, raw, _ in previous:
+                atomic_write(path, raw)
+            for path, label in loaded:
+                # A failed bootout can leave the old job running already.
+                if subprocess.run(['launchctl', 'print', domain + '/' + label], capture_output=True).returncode:
+                    unified_bootstrap(domain, path)
+            raise
+    print('Unified gateway available at ' + UNIFIED_URL)
+
+
+def unified_bootstrap(domain, path):
+    # launchd can briefly reject re-registering a label after bootout even when
+    # that call succeeded. Retry only while the label is absent, and bound it.
+    label = plistlib.loads(path.read_bytes())['Label']
+    for attempt in range(8):
+        try:
+            subprocess.run(['launchctl', 'bootstrap', domain, str(path)], check=True, capture_output=True)
+            return
+        except subprocess.CalledProcessError as error:
+            if (error.returncode != 5 or attempt == 7 or
+                    subprocess.run(['launchctl', 'print', domain + '/' + label], capture_output=True).returncode == 0):
+                raise
+            time.sleep(.25)
+
+
+def unified_managed_agents():
+    """Recognize renamed jobs by their command and home, never by user name."""
+    agents = []
+    for path in sorted(UNIFIED_AGENT.parent.glob('*.plist')):
+        try:
+            value = plistlib.loads(path.read_bytes())
+            if not isinstance(value, dict):
+                continue
+            args = value.get('ProgramArguments', [])
+            environment = value.get('EnvironmentVariables', {})
+            if not isinstance(environment, dict):
+                continue
+            if (len(args) == 3 and args[2] == 'gateway-serve'
+                    and Path(args[1]).name in ('switch-codex.py', 'llama-codex.py')
+                    and Path(args[1]).parent.resolve() == CODEX_DIR
+                    and Path(environment.get('CODEX_HOME', str(CODEX_DIR))).expanduser().resolve() == CODEX_DIR
+                    and isinstance(value.get('Label'), str)):
+                agents.append((path, value))
+        except (OSError, ValueError, TypeError, plistlib.InvalidFileException):
+            continue
+    return agents
+
+
+def unified_wait_ready():
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         try:
             if unified_request()['service'] == 'codex-unified':
-                print('Unified gateway available at ' + UNIFIED_URL)
                 return
         except (OSError, ValueError, KeyError):
             pass
@@ -1301,8 +1389,18 @@ def unified_config(original, model=None):
     return updated
 
 
-def unified_activate():
-    unified_catalog_update()
+def unified_activate(mode='unified', model=None):
+    catalog = unified_catalog_update()
+    if mode != 'unified':
+        if model is None:
+            saved = initial_state(read_toml(CONFIG))
+            candidate = saved.get('selection', {}).get(mode, {}).get('model')
+            model = candidate if catalog['routes'].get(candidate) == mode else next(
+                (slug for slug, route in catalog['routes'].items() if route == mode), None)
+        if not model or catalog['routes'].get(model) != mode:
+            raise ValueError('No matching model available for ' + mode + '. Start llama.cpp or refresh the catalog.')
+    elif model is not None and model not in catalog['routes']:
+        raise ValueError('Model is not in the unified catalog: ' + model)
     unified_start()
     with locked():
         original = CONFIG.read_text()
@@ -1315,12 +1413,22 @@ def unified_activate():
                 raise
             backup = CODEX_DIR / 'backups' / ('unified-initial-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
             atomic_write(backup / 'config.toml', original)
-            atomic_write(CONFIG, unified_config(original))
+            settings = unified_settings()
+            atomic_write(backup / 'settings.json', json_text(settings))
+            updated = unified_config(original, model)
+            settings.update({'enabled': True, 'last_backup': str(backup), 'pending_active_threads': []})
+            try:
+                atomic_write(CONFIG, updated)
+                atomic_write(UNIFIED_SETTINGS, json_text(settings))
+            except BaseException:
+                atomic_write(CONFIG, original)
+                atomic_write(UNIFIED_SETTINGS, (backup / 'settings.json').read_bytes())
+                raise
             print('Unified provider configured. No existing chats need migration. Reopen Codex once.')
             return
         settings_before = UNIFIED_SETTINGS.read_bytes()
         settings = json.loads(settings_before)
-        updated = unified_config(original)
+        updated = unified_config(original, model)
         backup = CODEX_DIR/'backups'/('unified-switch-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
         backup.mkdir(parents=True, mode=0o700)
         atomic_write(backup/'config.toml', original)
@@ -1347,6 +1455,14 @@ def unified_activate():
             for row in rows:
                 path = Path(row['rollout_path'])
                 if path.is_file():
+                    if row['model_provider'] == UNIFIED_PROVIDER:
+                        # Already synchronized chats need no write lock or
+                        # rewrite, including ones currently open in Desktop.
+                        with path.open('rb') as stream:
+                            current = json.loads(stream.readline())
+                        if (current.get('type') == 'session_meta' and
+                                current.get('payload', {}).get('model_provider') == UNIFIED_PROVIDER):
+                            continue
                     lockpath = CODEX_DIR/'thread-writer-locks'/(row['id']+'.lock')
                     lockpath.parent.mkdir(exist_ok=True)
                     handle = lockpath.open('a')
@@ -1367,6 +1483,8 @@ def unified_activate():
                         atomic_write(path, json.dumps(meta,ensure_ascii=False,separators=(',',':')).encode()+separator+rest)
                 else:
                     missing += 1
+                    if row['model_provider'] == UNIFIED_PROVIDER:
+                        continue
                 con.execute('UPDATE threads SET model_provider=? WHERE id=?', (UNIFIED_PROVIDER,row['id']))
                 changed += 1
             after = {r['id']:r for r in con.execute('SELECT * FROM threads WHERE model_provider IN '+eligible)}
@@ -1399,6 +1517,8 @@ def unified_activate():
 
 def unified_select(mode, model=None, dry_run=False):
     catalog = unified_catalog_update()
+    if model is not None and catalog['routes'].get(model) != mode:
+        raise ValueError('Model is not available for ' + mode + ': ' + model)
     state = initial_state(read_toml(CONFIG))
     model = model or state.get('selection',{}).get(mode,{}).get('model')
     if not model or catalog['routes'].get(model)!=mode:
@@ -1464,7 +1584,7 @@ def update(offline=False, quiet=False):
     return legacy_update_catalog(offline,quiet)
 
 
-def install_script():
+def install_script(mode='unified', model=None, copy_only=False):
     CODEX_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     destination = CODEX_DIR / 'llama-codex.py'
     source = Path(__file__).resolve()
@@ -1476,13 +1596,24 @@ def install_script():
     if not CONFIG.exists():
         atomic_write(CONFIG, '')
     print('Script installed at:', destination)
-    print('Enable the unified provider: python3 ' + str(destination) + ' unified')
+    if copy_only:
+        print('Copy only: provider and chats were not changed.')
+        return
+    if mode == 'local':
+        start_server()
+    unified_activate(mode, model)
+    print('Installation complete. Configured provider:', read_toml(CONFIG)['model_provider'])
+    print('Default model:', read_toml(CONFIG)['model'])
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command')
-    commands.add_parser('install', help='Install the script in CODEX_HOME without migrating chats')
+    install = commands.add_parser('install', help='Install, configure the provider, and upgrade the background service')
+    install.add_argument('--mode', choices=('unified', 'local', 'cloud'), default='unified',
+                         help='Initial model route; all modes keep the combined provider (default: unified)')
+    install.add_argument('--model', help='Initial model identifier from the catalog')
+    install.add_argument('--copy-only', action='store_true', help='Copy the script without activating or migrating chats')
     for mode in ('local', 'cloud'):
         command = commands.add_parser(mode, help='Switch to provider ' + mode)
         command.add_argument('--model', help='Model identifier')
@@ -1503,7 +1634,7 @@ def main():
     commands.add_parser('hybrid-status', help='Show unified gateway status')
     args = parser.parse_args()
     if args.command == 'install':
-        install_script()
+        install_script(args.mode, args.model, args.copy_only)
         return 0
     if not CONFIG.exists():
         raise RuntimeError('Run llama-codex.py install first, or start Codex to create config.toml.')

@@ -14,12 +14,12 @@ with tempfile.TemporaryDirectory(prefix='switch-codex-portable-') as name:
     env = {**os.environ, 'CODEX_HOME': str(home / 'runtime')}
     subprocess.run([sys.executable, str(SOURCE), '--help'], env=env, check=True, capture_output=True)
     assert not (home / 'runtime').exists(), 'Help must have no runtime side effects'
-    subprocess.run([sys.executable, str(SOURCE), 'install'], env=env, check=True, capture_output=True)
+    subprocess.run([sys.executable, str(SOURCE), 'install', '--copy-only'], env=env, check=True, capture_output=True)
     installed = home / 'runtime' / 'llama-codex.py'
     assert installed.read_bytes() == SOURCE.read_bytes()
     config = installed.parent / 'config.toml'
     config.write_text('# Keep my configuration\n[desktop]\nkeep = true\n')
-    subprocess.run([sys.executable, str(SOURCE), 'install'], env=env, check=True, capture_output=True)
+    subprocess.run([sys.executable, str(SOURCE), 'install', '--copy-only'], env=env, check=True, capture_output=True)
     assert config.read_text().startswith('# Keep my configuration')
     assert len(list((installed.parent / 'backups').glob('script-*.py'))) == 1
     with patch.dict(os.environ, env):
@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='switch-codex-portable-') as name:
     assert catalog['routes'] == {'gpt-test': 'cloud'} and warning == 'offline'
     g.atomic_write(g.UNIFIED_CATALOG, g.json_text(catalog))
     # First installation has no SQLite database yet; activation still works.
-    with patch.object(g, 'unified_catalog_update'), patch.object(g, 'unified_start'):
+    with patch.object(g, 'unified_catalog_update', return_value=catalog), patch.object(g, 'unified_start'):
         g.unified_activate()
     parsed = g.read_toml(g.CONFIG)
     assert parsed['model_provider'] == 'codex-unified'

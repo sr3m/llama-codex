@@ -18,6 +18,14 @@ http://127.0.0.1:9932
 
 `127.0.0.1` refers to the current machine. It is not a Tailscale address.
 
+## Installation and service upgrades
+
+`install` performs activation automatically. `--mode local` or `--mode cloud` selects an initial model route while retaining `codex-unified`; `--copy-only` opts out of activation. The installer validates model selection before changing the provider or migrating chats. Selecting local also starts llama.cpp using the existing startup logic.
+
+The LaunchAgent points to the installed `llama-codex.py` and records a source hash to detect upgrades. Old jobs are recognized by their script command and Codex home, rather than a user-specific label. Before replacing jobs the installer checks established gateway connections. It backs up old definitions, removes obsolete login jobs, starts the replacement, and checks health. Failed upgrades restore the previous definitions and previously loaded jobs. Repeating installation with the same service definition does not restart it.
+
+The installer does not relocate ChatGPT cloud chats or change their execution permissions. Model routing and chat file access are separate settings; see the README's cloud-chat notice troubleshooting section.
+
 ## 1. Back up and inspect configuration
 
 The script works with `config.toml`, model catalogs, and the `state_N.sqlite` database in the Codex directory. Before migration it backs up the configuration and uses SQLite's backup API, which includes data still in the WAL.

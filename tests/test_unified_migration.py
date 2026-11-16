@@ -1,4 +1,5 @@
 import importlib.util
+import fcntl
 import json
 from pathlib import Path
 import sqlite3
@@ -30,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix='migration-tests-') as name:
     def fail_config(path,data):
         if path==g.CONFIG:raise OSError('simulated config write failure')
         return real_write(path,data)
-    with patch.object(g,'unified_catalog_update'),patch.object(g,'unified_start'):
+    with patch.object(g,'unified_catalog_update',return_value=json.loads(g.UNIFIED_CATALOG.read_text())),patch.object(g,'unified_start'):
         with patch.object(g,'atomic_write',side_effect=fail_config):
             try:g.unified_activate();raise AssertionError('Expected failure')
             except OSError:pass
@@ -45,6 +46,14 @@ with tempfile.TemporaryDirectory(prefix='migration-tests-') as name:
     assert cfg['desktop']=={'keep':True} and cfg['web_search']=='live'
     assert cfg['model_provider']=='codex-unified' and 'model_catalog_json' not in cfg
     assert cfg['model_providers']['codex-unified']['requires_openai_auth'] is True
+    # Reinstalling must not mark an already-synchronized open chat as pending.
+    lock = g.CODEX_DIR/'thread-writer-locks/a.lock'
+    with lock.open('a') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with patch.object(g,'unified_catalog_update',return_value=json.loads(g.UNIFIED_CATALOG.read_text())),patch.object(g,'unified_start'):
+            g.unified_activate()
+        assert g.unified_settings()['pending_active_threads'] == []
+        assert p.read_bytes().partition(b'\n')[2] == rest
     with sqlite3.connect(db) as c:
         assert c.execute('SELECT model_provider,model,reasoning_effort,title,tokens_used FROM threads WHERE id="a"').fetchone()==('codex-unified','gpt-6.1-sol','high','keep title',123)
         assert c.execute('SELECT model_provider FROM threads WHERE id="b"').fetchone()[0]=='third-party'

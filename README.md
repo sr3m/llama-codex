@@ -46,13 +46,33 @@ python3 llama-codex.py --help
 python3 llama-codex.py install
 ```
 
-`install` copies only the script to `~/.codex/llama-codex.py`, backs up an existing copy, and creates an empty `config.toml` only when it is missing. It does not migrate chats. It respects `CODEX_HOME` if you use another directory.
+`install` is the complete setup command on macOS. It copies the script to `~/.codex/llama-codex.py`, validates the combined model catalog, installs or upgrades the login service, configures `model_provider = "codex-unified"`, and synchronizes eligible existing chats with backups. It respects `CODEX_HOME` if you use another directory. Finish active turns before installation. Reopen Codex once after initial activation.
+
+Choose the initial model route during installation:
+
+```bash
+# Combined picker; preserve the current model when it is available
+python3 llama-codex.py install
+
+# Combined picker with a local model as the default; starts llama.cpp if needed
+python3 llama-codex.py install --mode local --model 'LOCAL-MODEL-ID'
+
+# Combined picker with an OpenAI model as the default
+python3 llama-codex.py install --mode cloud --model 'CLOUD-MODEL-ID'
+
+# Copy only, without changing the provider, service, or chats
+python3 llama-codex.py install --copy-only
+```
+
+All three modes use the stable `codex-unified` provider so both services remain available in the picker. The selected model determines which upstream receives requests. `--model` is optional; when supplied it must match the selected route. This does not select a chat execution environment or grant access to local files.
+
+Upgrades recognize the former `switch-codex.py gateway-serve` service by its command and Codex directory. They back up and replace obsolete jobs without touching unrelated LaunchAgents. Identical service definitions are left running. If connections are active, the upgrade stops with an explanation before unloading any service; finish the turns and rerun `install`. A failed service upgrade restores the previous LaunchAgent definitions and restarts previously loaded jobs. The copied script is retained if activation fails; the command reports failure, and can be retried after correcting the reported issue.
 
 Start llama.cpp with your models on the expected port. If you use the `llama` executable with its `serve` subcommand, the menu can start it automatically. An optional preset can be placed at `~/.codex/llamacpp-codex.ini`. With `llama-server`, start the server manually using your usual model arguments and `--host 127.0.0.1 --port 9931`.
 
-## Enable the combined model picker
+## Synchronize pending chats
 
-Finish active turns and close Codex so that all existing chats can complete their initial migration:
+`install` already enables the combined picker. If chats were locked during installation, finish active turns and close Codex, then retry synchronization:
 
 ```bash
 python3 ~/.codex/llama-codex.py unified
@@ -146,6 +166,12 @@ The commands `local`, `cloud`, `catalog`, `watch`, `start`, `stop`, and `status`
 
 Enable `unified` first to switch models in the picker without restarting for each change.
 
+## Cloud chat file-access notice
+
+If a chat shows **“This chat was started in the cloud, so ChatGPT won't be able to access files on your computer unless you add them to your conversation”**, it is a ChatGPT cloud-chat notice, not a llama.cpp connection error. A cloud model and a cloud-hosted chat are different concepts: a local Codex chat can use an OpenAI model and still use its permitted local tools.
+
+The provider switch configures Codex model routing. It does not move ChatGPT chats into the local Codex SQLite database or grant them filesystem permissions. To work with files on this computer, use the chat menu's **Continue in Work mode** option and select the computer execution option when offered, or open a local Codex chat in the project folder and provide the relevant context. You can also attach files to the existing cloud chat. Availability and wording depend on the installed app. Existing cloud chats are left intact.
+
 ## Tests and development
 
 ```bash
@@ -153,7 +179,7 @@ python3 tests/run.py
 npm --prefix vscode-extension test
 ```
 
-The Python tests use temporary directories, a synthetic SQLite database, and simulated loopback HTTP servers. They do not read your authentication, modify your chats, or send requests to OpenAI or a real model. They check credential isolation, SSE forwarding, upstream errors, message normalization, rollback, and preservation of chat data.
+The Python tests use temporary directories, synthetic SQLite databases, simulated LaunchAgents, and loopback HTTP servers. They do not read your authentication, modify your chats, or send requests to OpenAI or a real model. They check automatic setup, initial route selection, legacy service migration, active connection protection, idempotency, credential isolation, SSE forwarding, upstream errors, message normalization, rollback, and preservation of chat data.
 
 Open `llama-codex.code-workspace` for test tasks and extension debugging with F5. See [Local development](docs/development.md) for editor integration tests and packaging. Optional `dist/` and `local-archive/` directories in a local working copy contain generated packages or session records and are ignored by Git.
 
