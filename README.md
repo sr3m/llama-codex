@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/llama-codex.svg" alt="llama-codex" width="900">
+</p>
+
 # llama-codex
 
 Use OpenAI cloud models and local llama.cpp models in Codex through a single Python script, an interactive terminal menu, and a unified model provider. This repository also includes **llama.cpp Inline**, a VS Code extension for local code completion.
