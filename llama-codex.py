@@ -739,28 +739,33 @@ def terminal_text(text, style):
 
 
 def print_banner():
-    # A compact block wordmark inspired by the llama.cpp terminal interface.
+    # Lowercase half-block lettering, like the llama.cpp startup wordmark.
     # Keep it self-contained: no font packages, images, or extra processes.
     font = {
-        'l': ('#   ', '#   ', '#   ', '#   ', '####'),
-        'a': (' ### ', '#   #', '#####', '#   #', '#   #'),
-        'm': ('#   #', '## ##', '# # #', '#   #', '#   #'),
-        '-': ('   ', '   ', '###', '   ', '   '),
-        'c': (' ####', '#    ', '#    ', '#    ', ' ####'),
-        'o': (' ### ', '#   #', '#   #', '#   #', ' ### '),
-        'd': ('#### ', '#   #', '#   #', '#   #', '#### '),
-        'e': ('#####', '#    ', '#### ', '#    ', '#####'),
-        'x': ('#   #', ' # # ', '  #  ', ' # # ', '#   #'),
+        'l': ('██', '██', '██', '██', '██'),
+        'a': ('     ', '     ', '▀▀█▄ ', '▄█▀██', '▀█▄██'),
+        'm': ('        ', '        ', '███▄██▄ ', '██ ██ ██', '██ ██ ██'),
+        '-': ('   ', '   ', '   ', '███', '   '),
+        'c': ('     ', '     ', '▄████', '██   ', '▀████'),
+        'o': ('     ', '     ', '▄███▄', '██ ██', '▀███▀'),
+        'd': ('   ██', '   ██', '▄████', '██ ██', '▀████'),
+        'e': ('     ', '     ', '▄███▄', '██▄██', '▀█▄▄▄'),
+        'x': ('     ', '     ', '▀█▄█▀', ' ▄█▄ ', '▄█▀█▄'),
     }
     rows = ['  ' + ' '.join(font[letter][row] for letter in 'llama-codex').rstrip()
             for row in range(5)]
     width = shutil.get_terminal_size(fallback=(80, 24)).columns
+    try:
+        ''.join(rows).encode(sys.stdout.encoding or 'utf-8')
+        supports_blocks = True
+    except UnicodeEncodeError:
+        supports_blocks = False
     print()
-    if width >= max(map(len, rows)):
+    if supports_blocks and width >= max(map(len, rows)):
         for row in rows:
-            print(terminal_text(row, '1;36'))
+            print(terminal_text(row, '37'))
     else:
-        print(terminal_text('  llama-codex', '1;36'))
+        print(terminal_text('  llama-codex', '1;37'))
     print('  ' + terminal_text('llama-codex / OpenAI + llama.cpp', '1'))
     print('  ' + terminal_text('Local and cloud models. One place.', '2'))
 
