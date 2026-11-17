@@ -663,24 +663,31 @@ def choose_model(mode):
         entries = [m for m in catalog['models'] if catalog.get('routes',{}).get(m['slug'],'local')=='local']
     else:
         entries = []
-        for name in ('models_cache.codex_work_desktop.json', 'models_cache.json'):
+        # The Desktop cache may contain the merged local/cloud list. Prefer
+        # route metadata so the OpenAI submenu contains only cloud models.
+        unified = read_toml(CONFIG).get('model_provider') == UNIFIED_PROVIDER
+        for name in ('unified/catalog.json', 'models_cache.codex_work_desktop.json', 'models_cache.json'):
+            if name == 'unified/catalog.json' and not unified:
+                continue
             path = CODEX_DIR / name
             if path.exists():
-                entries = [m for m in json.loads(path.read_text()).get('models', [])
-                           if m.get('visibility') == 'list' and m.get('slug')]
+                cached = json.loads(path.read_text())
+                entries = [m for m in cached.get('models', [])
+                           if m.get('visibility') == 'list' and m.get('slug')
+                           and (name != 'unified/catalog.json' or cached.get('routes', {}).get(m['slug']) == 'cloud')]
                 if entries:
                     break
     config = read_toml(CONFIG)
     saved = initial_state(config)
     default = saved.get('selection', {}).get(mode, {}).get('model', '(default)')
-    print('\nSelect a model: ' + ('local' if mode == 'local' else 'OpenAI'))
-    print(f'  0. Restore per-chat preferences (last default: {default})')
+    print('\n  ' + terminal_text('LOCAL MODELS' if mode == 'local' else 'OPENAI MODELS', '1;36'))
+    print(f'  [0] Restore per-chat preferences (last default: {default})')
     for number, model in enumerate(entries, 1):
-        print(f'  {number}. {model.get("display_name", model["slug"])}')
-    print('  m. Enter a model identifier')
-    print('  v. Return to the menu')
+        print('  ' + terminal_text(f'[{number}]', '36') + ' ' + model.get('display_name', model['slug']))
+    print('  [m] Enter a model identifier')
+    print('  [v] Return to the menu')
     while True:
-        answer = input('Model [0]: ').strip().lower()
+        answer = input(terminal_text('\n  model [0] > ', '1;36')).strip().lower()
         if answer == 'v':
             return False, None
         if not answer or answer == '0':
@@ -724,27 +731,71 @@ def watch_catalog(interval=5):
         print('\nCatalog watcher stopped.')
 
 
+def terminal_text(text, style):
+    """Use color only on terminals that support it, honoring NO_COLOR."""
+    if sys.stdout.isatty() and os.environ.get('TERM') != 'dumb' and 'NO_COLOR' not in os.environ:
+        return '\033[' + style + 'm' + text + '\033[0m'
+    return text
+
+
+def print_banner():
+    # A compact block wordmark inspired by the llama.cpp terminal interface.
+    # Keep it self-contained: no font packages, images, or extra processes.
+    font = {
+        'l': ('#   ', '#   ', '#   ', '#   ', '####'),
+        'a': (' ### ', '#   #', '#####', '#   #', '#   #'),
+        'm': ('#   #', '## ##', '# # #', '#   #', '#   #'),
+        '-': ('   ', '   ', '###', '   ', '   '),
+        'c': (' ####', '#    ', '#    ', '#    ', ' ####'),
+        'o': (' ### ', '#   #', '#   #', '#   #', ' ### '),
+        'd': ('#### ', '#   #', '#   #', '#   #', '#### '),
+        'e': ('#####', '#    ', '#### ', '#    ', '#####'),
+        'x': ('#   #', ' # # ', '  #  ', ' # # ', '#   #'),
+    }
+    rows = ['  ' + ' '.join(font[letter][row] for letter in 'llama-codex').rstrip()
+            for row in range(5)]
+    width = shutil.get_terminal_size(fallback=(80, 24)).columns
+    print()
+    if width >= max(map(len, rows)):
+        for row in rows:
+            print(terminal_text(row, '1;36'))
+    else:
+        print(terminal_text('  llama-codex', '1;36'))
+    print('  ' + terminal_text('llama-codex / OpenAI + llama.cpp', '1'))
+    print('  ' + terminal_text('Local and cloud models. One place.', '2'))
+
+
+def print_menu(config):
+    width = max(1, min(shutil.get_terminal_size(fallback=(80, 24)).columns - 2, 68))
+    print('\n  ' + terminal_text('-' * width, '2'))
+    print('  ' + terminal_text('Provider', '2') + '  ' + str(config.get('model_provider', 'openai')))
+    print('  ' + terminal_text('Model   ', '2') + '  ' + str(config.get('model', 'default')))
+    print('  ' + terminal_text('-' * width, '2'))
+    groups = (
+        ('MODELS', (('1', 'Choose a local model'), ('2', 'Choose an OpenAI model'))),
+        ('CATALOG', (('3', 'Refresh models'), ('4', 'Watch for models every 5 seconds'))),
+        ('SERVER', (('5', 'Start llama.cpp'), ('6', 'Stop llama.cpp'))),
+        ('SETUP', (('7', 'Status and backups'), ('8', 'Enable / synchronize unified provider'),
+                   ('9', 'Restore direct OpenAI access'))),
+    )
+    for label, entries in groups:
+        print('\n  ' + terminal_text(label, '1;2'))
+        for key, label in entries:
+            print('  ' + terminal_text('[' + key + ']', '36') + ' ' + label)
+    print('\n  ' + terminal_text('[0]', '36') + ' Exit')
+    print('  ' + terminal_text('Local selection starts llama.cpp when needed.', '2'))
+
+
 def menu():
+    print_banner()
     if not sys.stdin.isatty():
         # Piped input is useful for scripting and smoke tests; EOF exits cleanly.
         print('Reading menu input from stdin. Use --help to list direct commands.')
     while True:
         try:
             config = read_toml(CONFIG)
-            provider = config.get('model_provider', 'openai')
-            print('\nCodex · Models and providers')
-            print(f'  Current: {provider} · {config.get("model", "default")}')
-            print('  1. Use local models and choose a model (starts llama.cpp if needed)')
-            print('  2. Use OpenAI and choose a model')
-            print('  3. Update the model catalog')
-            print('  4. Keep the catalog updated every 5 seconds')
-            print('  5. Start the llama.cpp server')
-            print('  6. Stop the llama.cpp server')
-            print('  7. Show status and last backup')
-            print('  8. Enable/synchronize the unified provider')
-            print('  9. Restore direct OpenAI access')
-            print('  0. Exit')
-            choice = input('\nOption: ').strip()
+            print_menu(config)
+            choice = input(terminal_text('\n  llama-codex > ', '1;36')).strip()
             if choice == '0':
                 print('Goodbye.')
                 return 0

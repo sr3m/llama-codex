@@ -16,7 +16,7 @@ The script and extension can share the same llama.cpp server. They work independ
 
 ## Codex features
 
-- Interactive menu for model selection, catalog updates, and local server management.
+- Interactive menu with a llama.cpp-inspired `llama-codex` wordmark, grouped actions, and the current provider/model. Colors adapt to the terminal and respect `NO_COLOR`; narrow terminals use a compact heading.
 - HTTP gateway on `127.0.0.1:9932`, using a stable provider named `codex-unified`.
 - Local model discovery through llama.cpp at `127.0.0.1:9931/v1/models` and `llama-*.config.toml` profiles.
 - Combined model catalog refreshed by the gateway every 10 seconds. Codex controls when its interface fetches the catalog again.
