@@ -8,6 +8,18 @@ Use OpenAI cloud models and local llama.cpp models in Codex through a single Pyt
 
 **Community project; experimental integration.** This project is independent of OpenAI and llama.cpp. Desktop integration and model catalog support depend on the installed Codex version. The script validates the catalog with your installed CLI before activation; a Codex update may require changes to the integration.
 
+## Three model sources
+
+OpenAI cloud, local llama.cpp, and user-configured remote inference engines can coexist in the same Codex model picker:
+
+| Source | Where inference runs | Configuration |
+| --- | --- | --- |
+| OpenAI cloud | OpenAI's Codex service | The existing ChatGPT sign-in and default cloud route. |
+| Local llama.cpp | This computer | The default localhost server at `127.0.0.1:9931/v1`. |
+| Remote inference engine | A user-selected server, such as another llama.cpp instance | Add an optional service with its own private URL and optional key. Multiple remote engines can be registered. |
+
+All three use the stable `codex-unified` connection. Choosing a model selects its route. Remote inference runs on the configured server; the local start/stop commands manage the localhost llama.cpp instance. OpenAI API-key access is an additional optional service, separate from the default ChatGPT cloud route.
+
 ## What is included
 
 - **Codex switch and gateway:** `llama-codex.py` combines local and cloud models under one provider.
@@ -123,7 +135,7 @@ Use the exact model identifier exposed by llama.cpp and a context limit supporte
 
 ## Optional API services
 
-Additional services are **opt-in**. Skip the prompt during installation to keep only the default OpenAI + local llama.cpp setup. No additional service URL or credential is included automatically.
+Remote inference engines and additional API services are **opt-in**. Skip the prompt during installation to keep only the default OpenAI + local llama.cpp setup. No additional service URL or credential is included automatically.
 
 ```bash
 # Offer optional service setup during installation
@@ -136,11 +148,11 @@ python3 ~/.codex/llama-codex.py services
 python3 ~/.codex/llama-codex.py services presets
 ```
 
-The main terminal menu also provides **[10] Manage API services** and **[11] Choose an API service model**. The setup assistant accepts multiple services, custom base URLs, display names, an optional API key, and a context-window cap. Leave model IDs empty to discover them through `/models`, or enter explicit IDs if the server does not provide that endpoint.
+The main terminal menu also provides **[10] Manage remote engines / API services** and **[11] Remote inference / additional API model**. The setup assistant accepts multiple services, custom base URLs, display names, an optional API key, and a context-window cap. Leave model IDs empty to discover them through `/models`, or enter explicit IDs if the server does not provide that endpoint.
 
 | Optional preset | Purpose |
 | --- | --- |
-| llama.cpp | Another llama.cpp server, on this computer or a user-selected host; uses the llama.cpp request adapter. |
+| Remote llama.cpp | A user-selected llama.cpp server; the assistant requires its base URL instead of defaulting to the localhost instance. Uses the llama.cpp request adapter. |
 | LM Studio | A server with its OpenAI-compatible Responses endpoint enabled. |
 | OpenAI API | API-key access to OpenAI, separate from the default ChatGPT subscription route and subject to API billing. |
 | Custom | Another server that implements the OpenAI Responses protocol. |

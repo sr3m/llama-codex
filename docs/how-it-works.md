@@ -14,6 +14,8 @@ http://127.0.0.1:9932
           +-- Local model --> llama.cpp: http://127.0.0.1:9931/v1
           |
           +-- Cloud model --> OpenAI's Codex service
+          |
+          +-- Remote model --> User-configured inference server
 ```
 
 Localhost refers to the computer running the application. The gateway and llama.cpp use the loopback address `127.0.0.1` to communicate on that computer, with port `9932` for the gateway and port `9931` for llama.cpp.

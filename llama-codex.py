@@ -777,12 +777,14 @@ def print_menu(config):
     print('  ' + terminal_text('Model   ', '2') + '  ' + str(config.get('model', 'default')))
     print('  ' + terminal_text('-' * width, '2'))
     groups = (
-        ('MODELS', (('1', 'Choose a local model'), ('2', 'Choose an OpenAI model'))),
+        ('MODEL SOURCES', (('1', 'Local llama.cpp (this computer)'),
+                           ('2', 'OpenAI cloud'),
+                           ('11', 'Remote inference / additional API model'))),
         ('CATALOG', (('3', 'Refresh models'), ('4', 'Watch for models every 5 seconds'))),
         ('SERVER', (('5', 'Start llama.cpp'), ('6', 'Stop llama.cpp'))),
         ('SETUP', (('7', 'Status and backups'), ('8', 'Enable / synchronize unified provider'),
-                   ('9', 'Restore direct OpenAI access'))),
-        ('OPTIONAL APIS', (('10', 'Manage API services'), ('11', 'Choose an API service model'))),
+                   ('9', 'Restore direct OpenAI access'),
+                   ('10', 'Manage remote engines / API services'))),
     )
     for label, entries in groups:
         print('\n  ' + terminal_text(label, '1;2'))
@@ -868,7 +870,7 @@ MAX_UNIFIED_BODY = 64 * 1024 * 1024
 
 
 SERVICE_PRESETS = {
-    'llamacpp': {'name': 'llama.cpp', 'url': 'http://127.0.0.1:9931/v1', 'adapter': 'llamacpp'},
+    'llamacpp': {'name': 'Remote llama.cpp', 'url': '', 'adapter': 'llamacpp'},
     'lmstudio': {'name': 'LM Studio', 'url': 'http://127.0.0.1:1234/v1', 'adapter': 'responses'},
     'openai': {'name': 'OpenAI API (separate API key)', 'url': 'https://api.openai.com/v1', 'adapter': 'responses'},
     'custom': {'name': 'Custom Responses-compatible API', 'url': '', 'adapter': 'responses'},
@@ -1128,7 +1130,8 @@ def service_prompt_key():
 
 
 def services_setup():
-    print('\n  OPTIONAL API SERVICES')
+    print('\n  REMOTE INFERENCE ENGINES / OPTIONAL APIS')
+    print('  OpenAI cloud and local llama.cpp remain available as the default sources.')
     print('  Use a server that supports /v1/responses. URLs and keys stay in CODEX_HOME.')
     presets = list(SERVICE_PRESETS)
     while True:
@@ -1180,7 +1183,7 @@ def services_choose():
 
 def services_menu():
     while True:
-        print('\n  API SERVICES')
+        print('\n  REMOTE ENGINES / API SERVICES')
         services_list()
         print('  [1] Add services  [2] Enable  [3] Disable  [4] Remove')
         print('  [5] Refresh models  [0] Back')
@@ -2053,7 +2056,7 @@ def install_script(mode='unified', model=None, copy_only=False, configure_servic
         return
     if not configure_services and sys.stdin.isatty():
         try:
-            configure_services = input('Configure optional API services? [y/N]: ').strip().lower() in ('y', 'yes')
+            configure_services = input('Add remote inference engines or optional API services? [y/N]: ').strip().lower() in ('y', 'yes')
         except EOFError:
             configure_services = False
     if configure_services:
