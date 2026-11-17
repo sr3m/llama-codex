@@ -16,7 +16,7 @@ http://127.0.0.1:9932
           +-- Cloud model --> OpenAI's Codex service
 ```
 
-`127.0.0.1` refers to the current machine. It is not a Tailscale address.
+Localhost refers to the computer running the application. The gateway and llama.cpp use the loopback address `127.0.0.1` to communicate on that computer, with port `9932` for the gateway and port `9931` for llama.cpp.
 
 ## Installation and service upgrades
 

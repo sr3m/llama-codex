@@ -144,7 +144,7 @@ The gateway listens on loopback, requires a key for model access, and rejects re
 
 There is no automatic fallback between local and cloud services. Selecting a cloud model sends the conversation context included by Codex to OpenAI, even if some messages were generated locally.
 
-Do not publish your `.codex` directory, personal configurations, generated catalogs, databases, backups, or logs. The included `.gitignore` reduces common mistakes, but does not replace reviewing what you commit. The project does not include private network addresses or require Tailscale.
+Do not publish your `.codex` directory, personal configurations, generated catalogs, databases, backups, or logs. The included `.gitignore` reduces common mistakes, but does not replace reviewing what you commit. The gateway and local model server communicate through localhost (`127.0.0.1`) on the same computer.
 
 ## Restore direct OpenAI access
 
