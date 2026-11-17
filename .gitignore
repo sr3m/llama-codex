@@ -24,6 +24,8 @@ catalog.json
 auth.json
 settings.json
 provider_switch_state.json
+services.json
+service-keys/
 
 # Local development and session archive
 local-archive/

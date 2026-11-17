@@ -23,6 +23,7 @@ The script and extension can share the same llama.cpp server. They work independ
 - Interactive menu with a llama.cpp-inspired lowercase block `llama-codex` wordmark, grouped actions, and the current provider/model. The wordmark uses neutral white lettering; menu colors respect `NO_COLOR`. Narrow terminals and non-Unicode output use a compact text heading.
 - HTTP gateway on `127.0.0.1:9932`, using a stable provider named `codex-unified`.
 - Local model discovery through llama.cpp at `127.0.0.1:9931/v1/models` and `llama-*.config.toml` profiles.
+- Optional API service setup with presets, private URLs and per-service keys, model discovery, and enable/disable controls.
 - Combined model catalog refreshed by the gateway every 10 seconds. Codex controls when its interface fetches the catalog again.
 - After initial activation and one Codex restart, local and cloud models can be selected in the same chat without restarting for each model change.
 - Configuration and SQLite backups before migrating existing chats. Unified migration updates provider metadata in the index and session header while preserving messages and per-chat models.
@@ -37,7 +38,7 @@ Conversation continuity uses the visible history that Codex replays. Each model 
 - Codex signed in with ChatGPT, plus an installed CLI supporting `debug models --bundled` and `debug models`. The script searches installed apps and `PATH`; set `CODEX_CLI_BIN` to provide an explicit executable.
 - For local models, llama.cpp with `/v1/responses`, listening on `127.0.0.1:9931`. A server offering only `/v1/chat/completions` is insufficient for the Codex gateway.
 
-The cloud route uses the ChatGPT session supplied by Codex and the ChatGPT Codex service. This implementation does not provide OpenAI API-key authentication or alternative cloud providers.
+The cloud route uses the ChatGPT session supplied by Codex and the ChatGPT Codex service. Optional API services use their own credentials and do not share the ChatGPT session; see [Optional API services](#optional-api-services).
 
 ## Install the Codex script
 
@@ -119,6 +120,66 @@ model_context_window = 32768
 ```
 
 Use the exact model identifier exposed by llama.cpp and a context limit supported by both the model and server. Profiles advertise models; they do not download or load model weights themselves.
+
+## Optional API services
+
+Additional services are **opt-in**. Skip the prompt during installation to keep only the default OpenAI + local llama.cpp setup. No additional service URL or credential is included automatically.
+
+```bash
+# Offer optional service setup during installation
+python3 llama-codex.py install --configure-services
+
+# Manage services later, with an interactive menu
+python3 ~/.codex/llama-codex.py services
+
+# Display the available service presets
+python3 ~/.codex/llama-codex.py services presets
+```
+
+The main terminal menu also provides **[10] Manage API services** and **[11] Choose an API service model**. The setup assistant accepts multiple services, custom base URLs, display names, an optional API key, and a context-window cap. Leave model IDs empty to discover them through `/models`, or enter explicit IDs if the server does not provide that endpoint.
+
+| Optional preset | Purpose |
+| --- | --- |
+| llama.cpp | Another llama.cpp server, on this computer or a user-selected host; uses the llama.cpp request adapter. |
+| LM Studio | A server with its OpenAI-compatible Responses endpoint enabled. |
+| OpenAI API | API-key access to OpenAI, separate from the default ChatGPT subscription route and subject to API billing. |
+| Custom | Another server that implements the OpenAI Responses protocol. |
+
+These services must support **`POST /responses` relative to their API base URL**. A chat-completions-only server or a native Anthropic/Gemini API is not supported by this adapter. A preset is a configuration shortcut, not a guarantee that every server version or model supports Codex tool use. The service adapters have isolated protocol tests; the documented macOS environment does not imply live testing of every external provider.
+
+For command-line setup, use your own URL and an arbitrary service ID. This example registers an additional localhost service:
+
+```bash
+python3 ~/.codex/llama-codex.py services add my-server \
+  --preset llamacpp --url http://127.0.0.1:9931/v1 --name 'My server'
+
+# List configured services (URLs are hidden unless --show-urls is supplied)
+python3 ~/.codex/llama-codex.py services list
+
+# Refresh discovery or temporarily disable a service
+python3 ~/.codex/llama-codex.py services refresh
+python3 ~/.codex/llama-codex.py services disable my-server
+python3 ~/.codex/llama-codex.py services enable my-server
+
+# Remove a service and its active key file; private backups are retained
+python3 ~/.codex/llama-codex.py services remove my-server
+```
+
+Use `--model 'UPSTREAM-MODEL-ID'` on `services add` to declare a model explicitly; repeat it for multiple models. Use `--prompt-key` to enter a hidden key stored in a private file, or `--api-key-env VARIABLE_NAME` to read a key from the process environment. Environment variables must be available to the background gateway as well as the terminal; merely exporting one in a shell does not configure the login service. A private key file works across login sessions. Keys are never accepted as command-line argument values.
+
+Service configuration is saved only in **`$CODEX_HOME/services.json`**, or `~/.codex/services.json` by default. Hidden-key entries are stored separately in **`service-keys/<service-id>.key`**. Files use mode `0600`, and the key directory uses `0700`. These are local plaintext files protected by filesystem permissions, not an encrypted credential vault. Both paths and their backups are ignored by Git. Review staged files before publishing; do not force-add private configuration.
+
+Each service model gets a stable identifier such as `service/my-server/UPSTREAM-MODEL-ID`. This prevents collisions when different servers offer the same model name. The gateway sends the original model ID and only that service's optional key to its URL; it never forwards ChatGPT tokens, cookies, or account headers to additional services. Redirects are refused. Adding or changing services refreshes the catalog, and the gateway also discovers changes periodically. Reopen the Codex model picker to see them; app caching can delay updates.
+
+To change the default from the terminal:
+
+```bash
+python3 ~/.codex/llama-codex.py services use my-server --model 'UPSTREAM-MODEL-ID'
+```
+
+`codex-unified` remains the configured provider. Choose a model in the Desktop picker to change it in an existing chat. Disabling or removing a service immediately blocks its cached model routes; an outage never causes a fallback to another endpoint. Previously discovered models remain available in the catalog while an enabled service is temporarily offline. The gateway does not start or stop additional servers; the existing start/stop commands manage only the default localhost llama.cpp server.
+
+The existing unified setup still expects Codex to be signed in with ChatGPT. Registering an API-key service does not remove that Desktop authentication requirement.
 
 ## VS Code code completion
 

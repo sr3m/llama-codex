@@ -782,6 +782,7 @@ def print_menu(config):
         ('SERVER', (('5', 'Start llama.cpp'), ('6', 'Stop llama.cpp'))),
         ('SETUP', (('7', 'Status and backups'), ('8', 'Enable / synchronize unified provider'),
                    ('9', 'Restore direct OpenAI access'))),
+        ('OPTIONAL APIS', (('10', 'Manage API services'), ('11', 'Choose an API service model'))),
     )
     for label, entries in groups:
         print('\n  ' + terminal_text(label, '1;2'))
@@ -824,6 +825,10 @@ def menu():
                 unified_activate()
             elif choice == '9':
                 unified_restore()
+            elif choice == '10':
+                services_menu()
+            elif choice == '11':
+                services_choose()
             else:
                 print('Invalid option; choose a menu number.')
         except EOFError:
@@ -843,6 +848,7 @@ import hmac
 import http.server
 import plistlib
 import secrets
+import getpass
 import threading
 import zlib
 
@@ -859,6 +865,337 @@ UNIFIED_AGENT = Path.home() / 'Library/LaunchAgents' / (UNIFIED_LABEL + '.plist'
 OPENAI_UPSTREAM = 'https://chatgpt.com/backend-api/codex'
 LOCAL_UPSTREAM = 'http://127.0.0.1:9931/v1'
 MAX_UNIFIED_BODY = 64 * 1024 * 1024
+
+
+SERVICE_PRESETS = {
+    'llamacpp': {'name': 'llama.cpp', 'url': 'http://127.0.0.1:9931/v1', 'adapter': 'llamacpp'},
+    'lmstudio': {'name': 'LM Studio', 'url': 'http://127.0.0.1:1234/v1', 'adapter': 'responses'},
+    'openai': {'name': 'OpenAI API (separate API key)', 'url': 'https://api.openai.com/v1', 'adapter': 'responses'},
+    'custom': {'name': 'Custom Responses-compatible API', 'url': '', 'adapter': 'responses'},
+}
+
+
+def service_validate(value):
+    if (not isinstance(value, dict) or not isinstance(value.get('id'), str)
+            or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', value['id'])):
+        raise ValueError('Service ID must start with a lowercase letter and contain only letters, digits, or hyphens (48 characters maximum).')
+    value = copy.deepcopy(value)
+    if not isinstance(value.get('url'), str):
+        raise ValueError('Supply an HTTP(S) API base URL.')
+    parsed = urllib.parse.urlsplit(value.get('url', ''))
+    if (parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username is not None
+            or parsed.password is not None or parsed.query or parsed.fragment
+            or any(c.isspace() or ord(c) < 32 for c in value['url'])):
+        raise ValueError('Use an HTTP(S) API base URL without credentials, query parameters, or fragments.')
+    if parsed.hostname.lower() in ('localhost', '127.0.0.1', '::1') and parsed.port == UNIFIED_PORT:
+        raise ValueError('An upstream service cannot point back to the unified gateway.')
+    # Accessing port also validates malformed or out-of-range port syntax.
+    parsed.port
+    value['url'] = value['url'].rstrip('/')
+    if value.get('adapter') not in ('responses', 'llamacpp'):
+        raise ValueError('Service adapter must be responses or llamacpp.')
+    if not isinstance(value.get('name'), str) or not value['name'].strip() or len(value['name']) > 80:
+        raise ValueError('Supply a service display name (80 characters maximum).')
+    if any(ord(c) < 32 or ord(c) == 127 for c in value['name']):
+        raise ValueError('Service names cannot contain control characters.')
+    if type(value.get('enabled')) is not bool:
+        raise ValueError('Service enabled must be true or false.')
+    if type(value.get('context_window')) is not int or not 512 <= value['context_window'] <= 10_000_000:
+        raise ValueError('Context window must be an integer between 512 and 10000000.')
+    models = value.get('models', [])
+    if not isinstance(models, list) or any(not isinstance(m, str) or not m.strip() or
+            any(ord(c) < 32 or ord(c) == 127 for c in m) for m in models):
+        raise ValueError('Models must be a list of nonempty model identifiers.')
+    value['models'] = list(dict.fromkeys(models))
+    if value.get('api_key_env') and (not isinstance(value['api_key_env'], str) or
+            not re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', value['api_key_env'])):
+        raise ValueError('Invalid API key environment variable name.')
+    return value
+
+
+def services_load():
+    path = CODEX_DIR / 'services.json'
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict) or data.get('version') != 1 or not isinstance(data.get('services'), list):
+        raise ValueError('Unsupported services.json format.')
+    values = [service_validate(s) for s in data['services']]
+    if len(values) > 32 or len({s['id'] for s in values}) != len(values):
+        raise ValueError('Configure at most 32 services with unique IDs.')
+    return values
+
+
+def service_key_path(service_id):
+    if not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', service_id):
+        raise ValueError('Invalid service ID.')
+    return CODEX_DIR / 'service-keys' / (service_id + '.key')
+
+
+def services_save(values, key=None, service_id=None):
+    """Private runtime state only; neither URLs nor keys belong in source."""
+    values = [service_validate(s) for s in values]
+    if len(values) > 32 or len({s['id'] for s in values}) != len(values):
+        raise ValueError('Configure at most 32 services with unique IDs.')
+    if key is not None and (not isinstance(key, str) or not key.strip() or any(c in key for c in '\r\n')):
+        raise ValueError('Invalid API key.')
+    path = CODEX_DIR / 'services.json'
+    previous = path.read_bytes() if path.exists() else None
+    keypath = service_key_path(service_id) if key is not None else None
+    oldkey = keypath.read_bytes() if keypath is not None and keypath.exists() else None
+    backup = CODEX_DIR / 'backups' / ('services-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+    backup.mkdir(parents=True, mode=0o700)
+    if previous is not None:
+        atomic_write(backup / 'services.json', previous)
+    if oldkey is not None:
+        atomic_write(backup / 'service.key', oldkey)
+    try:
+        if keypath is not None:
+            keypath.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            keypath.parent.chmod(0o700)
+            atomic_write(keypath, key.strip())
+            keypath.chmod(0o600)
+        atomic_write(path, json_text({'version': 1, 'services': values}))
+        path.chmod(0o600)
+    except BaseException:
+        try:
+            if previous is None:
+                path.unlink(missing_ok=True)
+            elif not path.exists() or path.read_bytes() != previous:
+                atomic_write(path, previous)
+        finally:
+            if keypath is not None:
+                if oldkey is None:
+                    keypath.unlink(missing_ok=True)
+                else:
+                    atomic_write(keypath, oldkey)
+        raise
+
+
+def service_add(service_id, preset='custom', url=None, name=None, models=None,
+                context_window=32768, api_key_env=None, key=None):
+    selected = SERVICE_PRESETS[preset]
+    value = service_validate({'id': service_id, 'name': name or selected['name'],
+        'url': url or selected['url'], 'adapter': selected['adapter'], 'enabled': True,
+        'models': models or [], 'context_window': context_window, 'api_key_env': api_key_env})
+    with locked():
+        values = services_load()
+        if any(s['id'] == service_id for s in values):
+            raise ValueError('That service ID already exists. Choose another ID or remove it first.')
+        services_save(values + [value], key, service_id)
+    print('Service saved privately:', service_id)
+
+
+def service_change(service_id, action):
+    with locked():
+        values = services_load()
+        selected = next((s for s in values if s['id'] == service_id), None)
+        if selected is None:
+            raise ValueError('Unknown service ID.')
+        if action == 'remove':
+            values.remove(selected)
+        else:
+            selected['enabled'] = action == 'enable'
+        services_save(values)
+        if action == 'remove':
+            # Keep a private backup before removing this service's credential.
+            keypath = service_key_path(service_id)
+            if keypath.exists():
+                backup = CODEX_DIR / 'backups' / ('removed-service-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+                backup.mkdir(parents=True, mode=0o700)
+                atomic_write(backup / 'service.key', keypath.read_bytes())
+                keypath.unlink()
+    print('Service', action + ':', service_id)
+
+
+def service_headers(service):
+    headers = {'Content-Type': 'application/json', 'Accept': 'text/event-stream'}
+    env = service.get('api_key_env')
+    if env:
+        key = os.environ.get(env)
+        if not key:
+            raise RuntimeError('The configured service API key environment variable is not available to this process.')
+    else:
+        path = service_key_path(service['id'])
+        key = path.read_text().strip() if path.exists() else None
+    if key:
+        if any(c in key for c in '\r\n'):
+            raise ValueError('Invalid service credential.')
+        headers['Authorization'] = 'Bearer ' + key
+    return headers
+
+
+def service_discover(service):
+    headers = service_headers(service)
+    headers['Accept'] = 'application/json'
+    request = urllib.request.Request(service['url'] + '/models', headers=headers)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), UnifiedNoRedirect())
+    with opener.open(request, timeout=4) as response:
+        raw = response.read(4 * 1024 * 1024 + 1)
+    if len(raw) > 4 * 1024 * 1024:
+        raise ValueError('Service model list is too large.')
+    data = json.loads(raw)
+    if not isinstance(data, dict) or not isinstance(data.get('data'), list):
+        raise ValueError('Service must return an OpenAI-compatible data[] model list.')
+    result = []
+    for model in data['data']:
+        if not isinstance(model, dict) or not isinstance(model.get('id'), str) or not model['id'].strip():
+            continue
+        if any(ord(c) < 32 or ord(c) == 127 for c in model['id']):
+            continue
+        meta = model.get('meta') if isinstance(model.get('meta'), dict) else {}
+        context = meta.get('n_ctx') or model.get('context_length') or service['context_window']
+        try:
+            context = int(context)
+            if context < 512:
+                context = service['context_window']
+        except (TypeError, ValueError):
+            context = service['context_window']
+        result.append({'id': model['id'], 'context': min(context, service['context_window'])})
+    return result
+
+
+def services_catalog(base, offline=False):
+    models, routes, upstream_models, warnings = [], {}, {}, []
+    previous = json.loads(UNIFIED_CATALOG.read_text()) if UNIFIED_CATALOG.exists() else {}
+    for service in services_load():
+        if not service['enabled']:
+            continue
+        route = 'service:' + service['id']
+        discovered = [{'id': m, 'context': service['context_window']} for m in service['models']]
+        if not discovered and not offline:
+            try:
+                discovered = service_discover(service)
+            except (OSError, ValueError, TypeError, RuntimeError):
+                # Do not print upstream exception text: it can contain private URLs.
+                warnings.append(service['id'] + ': unavailable; keeping previously discovered models when possible.')
+        if not discovered:
+            discovered = [{'id': previous.get('upstream_models', {}).get(m['slug']),
+                           'context': min(m['context_window'], service['context_window'])}
+                          for m in previous.get('models', []) if previous.get('routes', {}).get(m['slug']) == route]
+        for item in discovered:
+            if not item['id']:
+                continue
+            alias = 'service/' + service['id'] + '/' + item['id']
+            if alias in routes:
+                continue
+            entry = copy.deepcopy(base)
+            entry.update({'slug': alias, 'display_name': item['id'] + ' · ' + service['name'],
+                'description': 'Optional API service: ' + service['name'],
+                'priority': 200 + len(models), 'visibility': 'list', 'supported_in_api': True,
+                'context_window': item['context'], 'max_context_window': item['context'],
+                'base_instructions': 'You are a helpful coding assistant. Use the available tools when requested. Follow the user instructions and report results accurately.',
+                'default_reasoning_level': 'none', 'supported_reasoning_levels': [{'effort': 'none', 'description': 'Service default'}],
+                'model_messages': None, 'upgrade': None, 'availability_nux': None,
+                'additional_speed_tiers': [], 'service_tiers': [], 'default_service_tier': None,
+                'available_access_programs': {'cyber': []}, 'support_verbosity': False,
+                'supports_search_tool': False, 'supports_image_detail_original': False,
+                'supports_experimental_context': False, 'use_responses_lite': False,
+                'supports_reasoning_effort_updates': False, 'experimental_supported_tools': [],
+                'input_modalities': ['text'], 'multi_agent_reasoning_effort': None,
+                'node_repl_auto_review_required': False,
+                'comp_hash': 'service-' + hashlib.sha256(alias.encode()).hexdigest()[:12]})
+            for optional in ('tool_mode', 'multi_agent_version', 'model_specialty'):
+                entry.pop(optional, None)
+            models.append(entry)
+            routes[alias] = route
+            upstream_models[alias] = item['id']
+    return models, routes, upstream_models, warnings
+
+
+def services_list(show_urls=False):
+    values = services_load()
+    if not values:
+        print('No optional API services configured.')
+    for service in values:
+        print('  ' + service['id'] + ' | ' + service['name'] + ' | ' + ('enabled' if service['enabled'] else 'disabled'))
+        if show_urls:
+            print('    ' + service['url'])
+
+
+def services_refresh():
+    if CONFIG.exists() and read_toml(CONFIG).get('model_provider') == UNIFIED_PROVIDER:
+        unified_catalog_update()
+        print('Reopen the model picker to see service models. Codex may cache the list.')
+    else:
+        print('Run unified or install to activate optional services in Codex.')
+
+
+def service_prompt_key():
+    if not sys.stdin.isatty():
+        raise RuntimeError('Hidden key entry requires an interactive terminal. Use --api-key-env for noninteractive setup.')
+    return getpass.getpass('  API key (hidden): ')
+
+
+def services_setup():
+    print('\n  OPTIONAL API SERVICES')
+    print('  Use a server that supports /v1/responses. URLs and keys stay in CODEX_HOME.')
+    presets = list(SERVICE_PRESETS)
+    while True:
+        for number, preset in enumerate(presets, 1):
+            print(f'  [{number}] {SERVICE_PRESETS[preset]["name"]}')
+        answer = input('  Service [Enter to finish]: ').strip()
+        if not answer:
+            return
+        if not answer.isdigit() or not 1 <= int(answer) <= len(presets):
+            print('Choose a service number.');continue
+        preset = presets[int(answer) - 1]
+        defaults = SERVICE_PRESETS[preset]
+        service_id = input('  Unique service ID (e.g. my-server): ').strip()
+        name = input('  Display name [' + defaults['name'] + ']: ').strip() or defaults['name']
+        url = input('  API base URL' + (' [' + defaults['url'] + ']' if defaults['url'] else '') + ': ').strip() or defaults['url']
+        print('  Key storage: [0] None  [1] Private key file  [2] Environment variable')
+        auth = input('  Key storage [0]: ').strip() or '0'
+        if auth not in ('0', '1', '2'):
+            print('Invalid key storage option. Nothing saved.');continue
+        key = service_prompt_key() if auth == '1' else None
+        env = input('  Environment variable name: ').strip() if auth == '2' else None
+        if auth == '2' and not env:
+            raise ValueError('Supply an environment variable name.')
+        if env:
+            print('  The variable must also be available to the background service. A private key file works across login sessions.')
+        models = [m.strip() for m in input('  Model IDs, comma-separated [Enter to discover]: ').split(',') if m.strip()]
+        context = int(input('  Context window cap [32768]: ').strip() or '32768')
+        service_add(service_id, preset, url, name, models, context, env, key)
+        if input('  Add another service? [y/N]: ').strip().lower() not in ('y', 'yes'):
+            return
+
+
+def services_choose():
+    catalog = unified_catalog_update()
+    entries = [m for m in catalog['models'] if catalog['routes'].get(m['slug'], '').startswith('service:')]
+    if not entries:
+        print('No service models available. Add a service or check its server.');return
+    for i, model in enumerate(entries, 1):
+        print(f'  [{i}] {model["display_name"]}')
+    answer = input('  Model [Enter to go back]: ').strip()
+    if answer:
+        if not answer.isdigit() or not 1 <= int(answer) <= len(entries):
+            raise ValueError('Choose a valid model number.')
+        slug = entries[int(answer) - 1]['slug']
+        if read_toml(CONFIG).get('model_provider') != UNIFIED_PROVIDER:
+            raise RuntimeError('Enable the unified provider first (menu option 8).')
+        unified_select(catalog['routes'][slug], slug)
+
+
+def services_menu():
+    while True:
+        print('\n  API SERVICES')
+        services_list()
+        print('  [1] Add services  [2] Enable  [3] Disable  [4] Remove')
+        print('  [5] Refresh models  [0] Back')
+        answer = input('  services > ').strip()
+        if answer in ('0', ''):
+            return
+        if answer == '1':
+            services_setup();services_refresh()
+        elif answer in ('2', '3', '4'):
+            service_change(input('  Service ID: ').strip(), {'2': 'enable', '3': 'disable', '4': 'remove'}[answer])
+            services_refresh()
+        elif answer == '5':
+            services_refresh()
+        else:
+            print('Choose a menu option.')
 
 
 def unified_settings():
@@ -935,7 +1272,13 @@ def unified_catalog_build(offline=False):
         model['use_responses_lite'] = False
         models.append(model)
         routes[slug] = 'local'
-    return {'models': models, 'routes': routes}, warning
+    extra, extra_routes, upstream_models, service_warnings = services_catalog(fallback, offline)
+    if set(routes).intersection(extra_routes):
+        raise ValueError('An optional service alias conflicts with an existing model identifier.')
+    models.extend(extra)
+    routes.update(extra_routes)
+    warnings = ([warning] if warning else []) + service_warnings
+    return {'models': models, 'routes': routes, 'upstream_models': upstream_models}, '\n'.join(warnings) or None
 
 
 def unified_catalog_update(validate=True, quiet=False, offline=False):
@@ -955,7 +1298,8 @@ def unified_catalog_update(validate=True, quiet=False, offline=False):
             atomic_write(UNIFIED_CATALOG, data)
     if not quiet:
         counts = collections.Counter(catalog['routes'].values())
-        print(f'Unified catalog: {counts["cloud"]} OpenAI models and {counts["local"]} local models.')
+        optional = sum(count for route, count in counts.items() if route.startswith('service:'))
+        print(f'Unified catalog: {counts["cloud"]} OpenAI models, {counts["local"]} local models, {optional} optional API models.')
         if warning:
             print(warning)
     return catalog
@@ -1069,6 +1413,41 @@ def unified_local_body(body):
                 accepted.append(tool)
         body['tools'] = accepted
     return body
+
+
+def service_body(body, service, upstream_model):
+    if service['adapter'] == 'llamacpp':
+        payload = unified_local_body(body)
+    else:
+        payload = copy.deepcopy(body)
+        for key in ('previous_response_id', 'service_tier', 'include', 'prompt_cache_key', 'client_metadata', 'reasoning'):
+            payload.pop(key, None)
+        if isinstance(payload.get('input'), list):
+            items = []
+            tools = list(payload.get('tools') or [])
+            for item in payload['input']:
+                if not isinstance(item, dict):
+                    raise ValueError('Responses input must contain objects.')
+                if item.get('type') == 'reasoning':
+                    continue
+                if item.get('type') == 'additional_tools':
+                    tools.extend(item.get('tools') or [])
+                    continue
+                if item.get('type') in ('function_call_output', 'custom_tool_call_output') and not item.get('call_id'):
+                    item = unified_local_body({'input': [item]})['input'][0]
+                elif item.get('type') is None and item.get('role'):
+                    item['type'] = 'message'
+                items.append(item)
+            payload['input'] = items
+            if tools:
+                unique = {}
+                for tool in tools:
+                    if not isinstance(tool, dict):
+                        raise ValueError('Responses tools must contain objects.')
+                    unique.setdefault(json.dumps(tool, sort_keys=True), tool)
+                payload['tools'] = list(unique.values())
+    payload['model'] = upstream_model
+    return payload
 
 
 class UnifiedServer(http.server.ThreadingHTTPServer):
@@ -1194,7 +1573,8 @@ class UnifiedHandler(http.server.BaseHTTPRequestHandler):
                 raise ValueError('Decoded request too large')
             body = json.loads(raw)
             model = body['model']
-            route = json.loads(UNIFIED_CATALOG.read_text())['routes'][model]
+            catalog = json.loads(UNIFIED_CATALOG.read_text())
+            route = catalog['routes'][model]
         except (ValueError, KeyError, TypeError, ImportError):
             self.reply(400, {'error': {'message': 'Unknown model or malformed request.'}})
             return
@@ -1204,14 +1584,29 @@ class UnifiedHandler(http.server.BaseHTTPRequestHandler):
         if route == 'cloud' and not self.headers.get('Authorization', '').startswith('Bearer '):
             self.reply(401, {'error': {'message': 'Codex ChatGPT sign-in required for cloud models.'}})
             return
-        if route == 'local' and suffix == '/responses/compact':
-            self.reply(400, {'error': {'message': 'Local models require client-side compaction.'}})
+        if route != 'cloud' and suffix == '/responses/compact':
+            self.reply(400, {'error': {'message': 'This service requires client-side compaction.'}})
             return
         upstream = OPENAI_UPSTREAM if route == 'cloud' else LOCAL_UPSTREAM
         try:
-            payload = body if route == 'cloud' else unified_local_body(body)
-        except (ValueError,TypeError):
-            self.reply(400, {'error': {'message': 'Invalid local Responses input structure.'}})
+            if route.startswith('service:'):
+                service = next((s for s in services_load() if s['enabled'] and 'service:' + s['id'] == route), None)
+                if service is None:
+                    self.reply(400, {'error': {'message': 'API service is disabled or removed. Refresh the model catalog.'}})
+                    return
+                upstream = service['url']
+                payload = service_body(body, service, catalog['upstream_models'][model])
+                headers = service_headers(service)
+            elif route in ('cloud', 'local'):
+                payload = body if route == 'cloud' else unified_local_body(body)
+                headers = unified_upstream_headers(self.headers, route)
+            else:
+                raise ValueError('Unknown route.')
+        except RuntimeError:
+            self.reply(503, {'error': {'message': 'The API service credential is unavailable to the gateway. Check its key file or environment.'}})
+            return
+        except (OSError, ValueError, TypeError, KeyError):
+            self.reply(400, {'error': {'message': 'Invalid Responses input or API service configuration.'}})
             return
         if route == 'local' and not server_online():
             try:
@@ -1220,7 +1615,7 @@ class UnifiedHandler(http.server.BaseHTTPRequestHandler):
                 self.reply(502, {'error': {'message': 'Could not start llama.cpp; inspect its server log.'}})
                 return
         request = urllib.request.Request(upstream + suffix, data=json.dumps(payload).encode(),
-                                         headers=unified_upstream_headers(self.headers, route), method='POST')
+                                         headers=headers, method='POST')
         started = time.monotonic()
         try:
             response = self.server.opener.open(request, timeout=900)
@@ -1625,7 +2020,8 @@ def show_status():
     status(config,database_path(config))
     try:
         state=unified_request('/status')
-        print('Gateway: running · '+str(state['models'].get('local',0))+' local / '+str(state['models'].get('cloud',0))+' OpenAI entries')
+        optional = sum(count for route, count in state['models'].items() if route.startswith('service:'))
+        print('Gateway: running · '+str(state['models'].get('local',0))+' local / '+str(state['models'].get('cloud',0))+' OpenAI / '+str(optional)+' optional API entries')
     except (OSError,ValueError):
         print('Gateway: unavailable; use hybrid-start to start it.')
     print('llama.cpp: '+('running' if server_online() else 'will start when a local model is selected'))
@@ -1640,7 +2036,7 @@ def update(offline=False, quiet=False):
     return legacy_update_catalog(offline,quiet)
 
 
-def install_script(mode='unified', model=None, copy_only=False):
+def install_script(mode='unified', model=None, copy_only=False, configure_services=False):
     CODEX_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     destination = CODEX_DIR / 'llama-codex.py'
     source = Path(__file__).resolve()
@@ -1655,6 +2051,13 @@ def install_script(mode='unified', model=None, copy_only=False):
     if copy_only:
         print('Copy only: provider and chats were not changed.')
         return
+    if not configure_services and sys.stdin.isatty():
+        try:
+            configure_services = input('Configure optional API services? [y/N]: ').strip().lower() in ('y', 'yes')
+        except EOFError:
+            configure_services = False
+    if configure_services:
+        services_setup()
     if mode == 'local':
         start_server()
     unified_activate(mode, model)
@@ -1670,6 +2073,28 @@ def main():
                          help='Initial model route; all modes keep the combined provider (default: unified)')
     install.add_argument('--model', help='Initial model identifier from the catalog')
     install.add_argument('--copy-only', action='store_true', help='Copy the script without activating or migrating chats')
+    install.add_argument('--configure-services', action='store_true', help='Open the optional API services setup before activation')
+    services = commands.add_parser('services', help='Manage optional Responses-compatible API services')
+    actions = services.add_subparsers(dest='service_action')
+    actions.add_parser('presets', help='List optional service presets')
+    listing = actions.add_parser('list', help='List privately configured services')
+    listing.add_argument('--show-urls', action='store_true', help='Also display private URLs')
+    addition = actions.add_parser('add', help='Register an optional API service')
+    addition.add_argument('id', help='Unique lowercase service ID')
+    addition.add_argument('--preset', choices=SERVICE_PRESETS, default='custom')
+    addition.add_argument('--url', help='API base URL (stored in private runtime configuration only)')
+    addition.add_argument('--name', help='Service display name')
+    addition.add_argument('--model', action='append', default=[], help='Explicit upstream model ID; repeat to add more')
+    addition.add_argument('--context-window', type=int, default=32768)
+    auth = addition.add_mutually_exclusive_group()
+    auth.add_argument('--api-key-env', help='Read the key from this environment variable')
+    auth.add_argument('--prompt-key', action='store_true', help='Prompt for a hidden key and store it privately')
+    for action in ('enable', 'disable', 'remove'):
+        actions.add_parser(action).add_argument('id')
+    actions.add_parser('refresh', help='Refresh the combined catalog')
+    use = actions.add_parser('use', help='Select a default model from a service')
+    use.add_argument('id')
+    use.add_argument('--model', help='Upstream model identifier (without the service prefix)')
     for mode in ('local', 'cloud'):
         command = commands.add_parser(mode, help='Switch to provider ' + mode)
         command.add_argument('--model', help='Model identifier')
@@ -1690,7 +2115,30 @@ def main():
     commands.add_parser('hybrid-status', help='Show unified gateway status')
     args = parser.parse_args()
     if args.command == 'install':
-        install_script(args.mode, args.model, args.copy_only)
+        install_script(args.mode, args.model, args.copy_only, args.configure_services)
+        return 0
+    if args.command == 'services':
+        action = args.service_action
+        if action == 'presets':
+            for preset, definition in SERVICE_PRESETS.items():
+                print(preset + ' | ' + definition['name'])
+        elif action == 'list':
+            services_list(args.show_urls)
+        elif action == 'add':
+            service_add(args.id, args.preset, args.url, args.name, args.model, args.context_window,
+                        args.api_key_env, service_prompt_key() if args.prompt_key else None)
+            services_refresh()
+        elif action in ('enable', 'disable', 'remove'):
+            service_change(args.id, action);services_refresh()
+        elif action == 'refresh':
+            services_refresh()
+        elif action == 'use':
+            if not CONFIG.exists() or read_toml(CONFIG).get('model_provider') != UNIFIED_PROVIDER:
+                raise RuntimeError('Enable the unified provider first.')
+            alias = 'service/' + args.id + '/' + args.model if args.model else None
+            unified_select('service:' + args.id, alias)
+        else:
+            services_menu()
         return 0
     if not CONFIG.exists():
         raise RuntimeError('Run llama-codex.py install first, or start Codex to create config.toml.')

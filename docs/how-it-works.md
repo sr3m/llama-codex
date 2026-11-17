@@ -51,7 +51,7 @@ routes = {
 destination = routes[request["model"]]
 ```
 
-Local requests go to llama.cpp. Cloud requests go to OpenAI's Codex service. A local failure does not trigger an automatic cloud fallback.
+Local requests go to llama.cpp. Cloud requests go to OpenAI's Codex service. Optional `service:<id>` routes resolve to privately configured Responses-compatible endpoints. Their catalog slugs use `service/<id>/<upstream-model-id>`; the gateway restores the original model ID before forwarding. A local failure does not trigger an automatic cloud fallback.
 
 Initial activation requires reopening Codex once. Subsequent model changes use the same provider.
 
@@ -113,3 +113,9 @@ Code before the cursor + code after the cursor
 FIM means *Fill In the Middle*: the model receives the code before and after the cursor and generates the missing section. This allows completion of an expression without rewriting the entire file.
 
 The extension waits for a short typing pause, requests a completion, and cancels it if you continue typing. A suggestion is inserted only when accepted. The extension uses the configured llama.cpp server directly and does not modify Codex configuration or chats.
+
+## Optional API services
+
+`services.json` is private runtime state, outside the repository. `services add` or the setup assistant registers a named endpoint; no additional services are enabled by default. Presets supply protocol defaults, while users choose URLs and optional credentials. Service models are discovered from `/models`, declared explicitly, or retained from the last catalog during an outage. Disabled services are omitted and also checked again on each generation request.
+
+Each service request rebuilds headers from its own key file or environment variable. Client ChatGPT credentials and cookies are not forwarded. The llama.cpp adapter reuses the tested local normalization; the generic Responses adapter preserves native tool calls while removing provider-specific reasoning and metadata. Services do not share upstream response IDs. No cross-service fallback occurs.
