@@ -18,6 +18,17 @@ OpenAI cloud, local llama.cpp, and user-configured remote inference engines can 
 | Local llama.cpp | This computer | The default localhost server at `127.0.0.1:9931/v1`. |
 | Remote inference engine | A user-selected server, such as another llama.cpp instance | Add an optional service with its own private URL and optional key. Multiple remote engines can be registered. |
 
+The combined picker catalog groups entries by source and labels them with a service prefix:
+
+```text
+OpenAI · Cloud model
+Local · Local model
+My server [my-server] · Remote model
+Another server [another-server] · Remote model
+```
+
+Cloud models come first, followed by local models and then additional services grouped by service ID. The service ID in remote labels distinguishes servers with the same display name. Grouping changes presentation only: model identifiers, upstream model names, routes, and chat history remain unchanged. Codex controls the picker layout and cache; grouping uses labelled, consecutively ordered model entries in the existing picker.
+
 All three use the stable `codex-unified` connection. Choosing a model selects its route. Remote inference runs on the configured server; the local start/stop commands manage the localhost llama.cpp instance. OpenAI API-key access is an additional optional service, separate from the default ChatGPT cloud route.
 
 ## What is included
@@ -190,6 +201,25 @@ python3 ~/.codex/llama-codex.py services use my-server --model 'UPSTREAM-MODEL-I
 ```
 
 `codex-unified` remains the configured provider. Choose a model in the Desktop picker to change it in an existing chat. Disabling or removing a service immediately blocks its cached model routes; an outage never causes a fallback to another endpoint. Previously discovered models remain available in the catalog while an enabled service is temporarily offline. The gateway does not start or stop additional servers; the existing start/stop commands manage only the default localhost llama.cpp server.
+
+### Remote service visibility
+
+The default is **all enabled services**, including cached models from temporarily unavailable servers. To show only remote services that respond, select **[6] Toggle online-only visibility** in the services menu, or run:
+
+```bash
+# Hide unavailable additional services
+python3 ~/.codex/llama-codex.py services visibility online
+
+# Restore all enabled services, including cached models
+python3 ~/.codex/llama-codex.py services visibility all
+
+# Show the current setting
+python3 ~/.codex/llama-codex.py services visibility
+```
+
+This preference is stored privately in `services.json` and preserved when adding, disabling, or removing services. It applies to additional services; the built-in OpenAI and localhost sources keep their existing behavior. Reachability is checked through authenticated `GET /models`, without generating text. For services with explicitly declared model IDs, HTTP 404/405 is also accepted because a server can support Responses without offering model discovery. A reachability check does not prove that a particular model can generate or use tools.
+
+The gateway refreshes availability periodically. In offline catalog mode, the online-only filter hides additional services because their current availability cannot be checked. Their previously known model IDs/context limits are retained in the private `unified/service-models-cache.json` cache, so switching back to `all` restores them even while the server remains offline. Disabled and removed services stay excluded. If the filter hides a currently selected default model, choose an available model in Codex; the script does not silently select a different service.
 
 The existing unified setup still expects Codex to be signed in with ChatGPT. Registering an API-key service does not remove that Desktop authentication requirement.
 

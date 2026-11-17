@@ -915,17 +915,23 @@ def service_validate(value):
     return value
 
 
-def services_load():
+def services_document():
     path = CODEX_DIR / 'services.json'
     if not path.exists():
-        return []
+        return {'version': 1, 'services': [], 'only_online': False}
     data = json.loads(path.read_text())
     if not isinstance(data, dict) or data.get('version') != 1 or not isinstance(data.get('services'), list):
         raise ValueError('Unsupported services.json format.')
     values = [service_validate(s) for s in data['services']]
     if len(values) > 32 or len({s['id'] for s in values}) != len(values):
         raise ValueError('Configure at most 32 services with unique IDs.')
-    return values
+    if type(data.get('only_online', False)) is not bool:
+        raise ValueError('Service only_online must be true or false.')
+    return {'version': 1, 'services': values, 'only_online': data.get('only_online', False)}
+
+
+def services_load():
+    return services_document()['services']
 
 
 def service_key_path(service_id):
@@ -934,7 +940,7 @@ def service_key_path(service_id):
     return CODEX_DIR / 'service-keys' / (service_id + '.key')
 
 
-def services_save(values, key=None, service_id=None):
+def services_save(values, key=None, service_id=None, only_online=None):
     """Private runtime state only; neither URLs nor keys belong in source."""
     values = [service_validate(s) for s in values]
     if len(values) > 32 or len({s['id'] for s in values}) != len(values):
@@ -943,6 +949,10 @@ def services_save(values, key=None, service_id=None):
         raise ValueError('Invalid API key.')
     path = CODEX_DIR / 'services.json'
     previous = path.read_bytes() if path.exists() else None
+    if only_online is None:
+        only_online = services_document()['only_online']
+    if type(only_online) is not bool:
+        raise ValueError('Service only_online must be true or false.')
     keypath = service_key_path(service_id) if key is not None else None
     oldkey = keypath.read_bytes() if keypath is not None and keypath.exists() else None
     backup = CODEX_DIR / 'backups' / ('services-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
@@ -957,7 +967,7 @@ def services_save(values, key=None, service_id=None):
             keypath.parent.chmod(0o700)
             atomic_write(keypath, key.strip())
             keypath.chmod(0o600)
-        atomic_write(path, json_text({'version': 1, 'services': values}))
+        atomic_write(path, json_text({'version': 1, 'services': values, 'only_online': only_online}))
         path.chmod(0o600)
     except BaseException:
         try:
@@ -1010,6 +1020,16 @@ def service_change(service_id, action):
     print('Service', action + ':', service_id)
 
 
+def services_visibility(mode=None):
+    if mode is not None:
+        if mode not in ('all', 'online'):
+            raise ValueError('Visibility must be all or online.')
+        with locked():
+            services_save(services_load(), only_online=mode == 'online')
+    online = services_document()['only_online']
+    print('Remote service visibility:', 'online only' if online else 'all enabled services (include cached models)')
+
+
 def service_headers(service):
     headers = {'Content-Type': 'application/json', 'Accept': 'text/event-stream'}
     env = service.get('api_key_env')
@@ -1059,22 +1079,54 @@ def service_discover(service):
 
 def services_catalog(base, offline=False):
     models, routes, upstream_models, warnings = [], {}, {}, []
+    document = services_document()
+    only_online = document['only_online']
     previous = json.loads(UNIFIED_CATALOG.read_text()) if UNIFIED_CATALOG.exists() else {}
-    for service in services_load():
+    cache_path = UNIFIED_HOME / 'service-models-cache.json'
+    known = json.loads(cache_path.read_text()).get('services', {}) if cache_path.exists() else {}
+    # Seed the separate cache from older catalogs before an online-only filter
+    # hides any entries. Hidden models must survive toggling the filter back.
+    for entry in previous.get('models', []):
+        route = previous.get('routes', {}).get(entry['slug'], '')
+        upstream = previous.get('upstream_models', {}).get(entry['slug'])
+        if route.startswith('service:') and upstream and route[8:] not in known:
+            service_id = route[8:]
+            known[service_id] = [{'id': previous['upstream_models'][m['slug']], 'context': m['context_window']}
+                for m in previous['models'] if previous.get('routes', {}).get(m['slug']) == route
+                and m['slug'] in previous.get('upstream_models', {})]
+    for service in document['services']:
         if not service['enabled']:
             continue
         route = 'service:' + service['id']
         discovered = [{'id': m, 'context': service['context_window']} for m in service['models']]
-        if not discovered and not offline:
+        if only_online and offline:
+            warnings.append(service['id'] + ': hidden; online status cannot be checked in offline mode.')
+            continue
+        if (only_online or not discovered) and not offline:
             try:
-                discovered = service_discover(service)
+                live = service_discover(service)
+                if not discovered:
+                    discovered = live
+                    known[service['id']] = live
+            except urllib.error.HTTPError as error:
+                # Explicit model IDs also support servers without GET /models.
+                # 404/405 establishes reachability, not generation capability.
+                if only_online and discovered and error.code in (404, 405):
+                    pass
+                elif only_online:
+                    warnings.append(service['id'] + ': unavailable; hidden by online-only visibility.')
+                    continue
+                else:
+                    warnings.append(service['id'] + ': unavailable; keeping previously discovered models when possible.')
             except (OSError, ValueError, TypeError, RuntimeError):
-                # Do not print upstream exception text: it can contain private URLs.
+                if only_online:
+                    warnings.append(service['id'] + ': unavailable; hidden by online-only visibility.')
+                    continue
                 warnings.append(service['id'] + ': unavailable; keeping previously discovered models when possible.')
         if not discovered:
-            discovered = [{'id': previous.get('upstream_models', {}).get(m['slug']),
-                           'context': min(m['context_window'], service['context_window'])}
-                          for m in previous.get('models', []) if previous.get('routes', {}).get(m['slug']) == route]
+            discovered = known.get(service['id'], [])
+        if discovered:
+            known[service['id']] = discovered
         for item in discovered:
             if not item['id']:
                 continue
@@ -1082,10 +1134,11 @@ def services_catalog(base, offline=False):
             if alias in routes:
                 continue
             entry = copy.deepcopy(base)
-            entry.update({'slug': alias, 'display_name': item['id'] + ' · ' + service['name'],
+            context = min(item['context'], service['context_window'])
+            entry.update({'slug': alias, 'display_name': service['name'] + ' [' + service['id'] + '] · ' + item['id'],
                 'description': 'Optional API service: ' + service['name'],
                 'priority': 200 + len(models), 'visibility': 'list', 'supported_in_api': True,
-                'context_window': item['context'], 'max_context_window': item['context'],
+                'context_window': context, 'max_context_window': context,
                 'base_instructions': 'You are a helpful coding assistant. Use the available tools when requested. Follow the user instructions and report results accurately.',
                 'default_reasoning_level': 'none', 'supported_reasoning_levels': [{'effort': 'none', 'description': 'Service default'}],
                 'model_messages': None, 'upgrade': None, 'availability_nux': None,
@@ -1102,6 +1155,11 @@ def services_catalog(base, offline=False):
             models.append(entry)
             routes[alias] = route
             upstream_models[alias] = item['id']
+    registered = {s['id'] for s in document['services']}
+    cache = json_text({'version': 1, 'services': {k: v for k, v in known.items() if k in registered}})
+    if registered or cache_path.exists():
+        if not cache_path.exists() or cache_path.read_text() != cache:
+            atomic_write(cache_path, cache)
     return models, routes, upstream_models, warnings
 
 
@@ -1185,8 +1243,9 @@ def services_menu():
     while True:
         print('\n  REMOTE ENGINES / API SERVICES')
         services_list()
+        services_visibility()
         print('  [1] Add services  [2] Enable  [3] Disable  [4] Remove')
-        print('  [5] Refresh models  [0] Back')
+        print('  [5] Refresh models  [6] Toggle online-only visibility  [0] Back')
         answer = input('  services > ').strip()
         if answer in ('0', ''):
             return
@@ -1196,6 +1255,9 @@ def services_menu():
             service_change(input('  Service ID: ').strip(), {'2': 'enable', '3': 'disable', '4': 'remove'}[answer])
             services_refresh()
         elif answer == '5':
+            services_refresh()
+        elif answer == '6':
+            services_visibility('all' if services_document()['only_online'] else 'online')
             services_refresh()
         else:
             print('Choose a menu option.')
@@ -1232,6 +1294,30 @@ def unified_prepare():
         # contain the merged gateway catalog and must not become its cloud seed.
         cloud = [m for m in cache['models'] if m['slug'].startswith(('gpt-', 'codex-'))]
         atomic_write(UNIFIED_CLOUD_CATALOG, json_text({'models':cloud}))
+
+
+def grouped_catalog(catalog):
+    """Presentation only: stable source groups without altering model routes."""
+    catalog = copy.deepcopy(catalog)
+    def order(model):
+        route = catalog['routes'][model['slug']]
+        if route not in ('cloud', 'local') and not route.startswith('service:'):
+            raise ValueError('Unknown model route in catalog.')
+        rank = 0 if route == 'cloud' else 1 if route == 'local' else 2
+        priority = model.get('priority', 0) if rank < 2 else 0
+        return (rank, route if rank == 2 else '', priority, model['slug'].casefold(), model['slug'])
+    catalog['models'].sort(key=order)
+    for priority, model in enumerate(catalog['models']):
+        route = catalog['routes'][model['slug']]
+        if route == 'cloud':
+            name = model.get('display_name') or model['slug']
+            while name.startswith('OpenAI · '):
+                name = name.removeprefix('OpenAI · ')
+            model['display_name'] = 'OpenAI · ' + name
+        elif route == 'local':
+            model['display_name'] = 'Local · ' + model['slug']
+        model['priority'] = priority
+    return catalog
 
 
 def unified_catalog_build(offline=False):
@@ -1281,7 +1367,7 @@ def unified_catalog_build(offline=False):
     models.extend(extra)
     routes.update(extra_routes)
     warnings = ([warning] if warning else []) + service_warnings
-    return {'models': models, 'routes': routes, 'upstream_models': upstream_models}, '\n'.join(warnings) or None
+    return grouped_catalog({'models': models, 'routes': routes, 'upstream_models': upstream_models}), '\n'.join(warnings) or None
 
 
 def unified_catalog_update(validate=True, quiet=False, offline=False):
@@ -2095,6 +2181,9 @@ def main():
     for action in ('enable', 'disable', 'remove'):
         actions.add_parser(action).add_argument('id')
     actions.add_parser('refresh', help='Refresh the combined catalog')
+    visibility = actions.add_parser('visibility', help='Show or change remote service catalog visibility')
+    visibility.add_argument('mode', nargs='?', choices=('all', 'online'),
+                            help='all keeps cached models; online shows only reachable remote services')
     use = actions.add_parser('use', help='Select a default model from a service')
     use.add_argument('id')
     use.add_argument('--model', help='Upstream model identifier (without the service prefix)')
@@ -2135,6 +2224,10 @@ def main():
             service_change(args.id, action);services_refresh()
         elif action == 'refresh':
             services_refresh()
+        elif action == 'visibility':
+            services_visibility(args.mode)
+            if args.mode is not None:
+                services_refresh()
         elif action == 'use':
             if not CONFIG.exists() or read_toml(CONFIG).get('model_provider') != UNIFIED_PROVIDER:
                 raise RuntimeError('Enable the unified provider first.')
