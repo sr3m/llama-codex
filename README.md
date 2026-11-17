@@ -178,6 +178,26 @@ The provider switch configures Codex model routing. It does not move ChatGPT cha
 
 ## Tests and development
 
+### Verified macOS environment
+
+The local verification below was performed on **November 16, 2026**:
+
+| Component | Verified version |
+| --- | --- |
+| macOS | 27.2.1, build `26B131` |
+| Architecture | Apple Silicon (`arm64`) |
+| Python used for the local regression suite | 3.14.6 |
+| Standalone Codex CLI | `codex-cli 0.169.0` |
+| Codex CLI bundled with the desktop app | `codex-cli 0.169.0-alpha.11.1` |
+| Desktop host application | ChatGPT 26.1111.21308, build `27194` |
+| Running llama.cpp server | `b12375-9d25e0014`, reported by `/props` |
+
+The local Python regression suite passed. Live checks also confirmed that the installed script matched the repository, the gateway responded, both installed Codex catalog readers accepted the 23-model catalog (10 cloud and 13 local), and the chat database passed SQLite's integrity check. These checks do not establish compatibility with every model or every Codex release.
+
+The GitHub Actions regression matrix also passed on `macos-latest` and `ubuntu-latest`, with Python **3.11** and **3.14**. Those jobs use isolated fixtures and simulated services; they do not run the desktop app, a real llama.cpp model, or authenticated OpenAI requests. Runner images and Python patch versions can change; consult the individual workflow logs for their exact environment.
+
+### Run the tests
+
 ```bash
 python3 tests/run.py
 npm --prefix vscode-extension test
