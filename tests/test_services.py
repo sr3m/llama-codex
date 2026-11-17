@@ -100,6 +100,7 @@ try:
         prototype = {'slug': 'prototype', 'base_instructions': 'synthetic'}
         models, routes, upstream_models, warnings = g.services_catalog(prototype)
         assert warnings == [] and len(models) == 2
+        assert {m['display_name'] for m in models} == {'Server A · shared-model', 'Server B · shared-model'}
         aliases = {s: 'service/' + s + '/shared-model' for s in ('server-a', 'server-b')}
         assert {m['slug'] for m in models} == set(aliases.values())
         assert {m['context_window'] for m in models} == {8192, 16384}

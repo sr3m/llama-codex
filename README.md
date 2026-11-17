@@ -23,11 +23,11 @@ The combined picker catalog groups entries by source and labels them with a serv
 ```text
 OpenAI · Cloud model
 Local · Local model
-My server [my-server] · Remote model
-Another server [another-server] · Remote model
+My server · Remote model
+Another server · Remote model
 ```
 
-Cloud models come first, followed by local models and then additional services grouped by service ID. The service ID in remote labels distinguishes servers with the same display name. Grouping changes presentation only: model identifiers, upstream model names, routes, and chat history remain unchanged. Codex controls the picker layout and cache; grouping uses labelled, consecutively ordered model entries in the existing picker.
+Cloud models come first, followed by local models and then additional services grouped by service ID. Remote labels use the short service display name. The internal service ID is appended only when enabled services share a name or use the reserved names OpenAI/Local. Grouping changes presentation only: model identifiers, upstream model names, routes, and chat history remain unchanged. Codex controls the picker layout and cache; grouping uses labelled, consecutively ordered model entries in the existing picker.
 
 All three use the stable `codex-unified` connection. Choosing a model selects its route. Remote inference runs on the configured server; the local start/stop commands manage the localhost llama.cpp instance. OpenAI API-key access is an additional optional service, separate from the default ChatGPT cloud route.
 

@@ -1081,6 +1081,7 @@ def services_catalog(base, offline=False):
     models, routes, upstream_models, warnings = [], {}, {}, []
     document = services_document()
     only_online = document['only_online']
+    names = collections.Counter(s['name'].casefold() for s in document['services'] if s['enabled'])
     previous = json.loads(UNIFIED_CATALOG.read_text()) if UNIFIED_CATALOG.exists() else {}
     cache_path = UNIFIED_HOME / 'service-models-cache.json'
     known = json.loads(cache_path.read_text()).get('services', {}) if cache_path.exists() else {}
@@ -1135,7 +1136,10 @@ def services_catalog(base, offline=False):
                 continue
             entry = copy.deepcopy(base)
             context = min(item['context'], service['context_window'])
-            entry.update({'slug': alias, 'display_name': service['name'] + ' [' + service['id'] + '] · ' + item['id'],
+            label = service['name']
+            if names[label.casefold()] > 1 or label.casefold() in ('openai', 'local'):
+                label += ' [' + service['id'] + ']'
+            entry.update({'slug': alias, 'display_name': label + ' · ' + item['id'],
                 'description': 'Optional API service: ' + service['name'],
                 'priority': 200 + len(models), 'visibility': 'list', 'supported_in_api': True,
                 'context_window': context, 'max_context_window': context,
